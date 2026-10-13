@@ -1,0 +1,2420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>eMerge Livelihoods — Excel Import Desk</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabase-config.js"></script>
+<style>
+  :root{
+    --paper: #EDEFE7;
+    --paper-line: #d7dccb;
+    --paper-alt: #E4E8DC;
+    --ink: #1F2A24;
+    --ink-soft: #5b6459;
+    --rule: #c3c9b7;
+    --accent: #a13d1f;
+    --accent-soft: #f0ddc9;
+    --green: #2f6f4e;
+    --green-soft: #dfe9df;
+    --white: #f7f8f3;
+
+    --brand: #4C808A;
+    --brand-dark: #395f66;
+    --brand-darker: #2c4a50;
+    --brand-soft: #e2edef;
+  }
+
+  *{ box-sizing: border-box; }
+
+  html,body{
+    margin:0; padding:0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family:Verdana, Geneva, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body{
+    min-height: 100vh;
+  }
+
+  .frame{
+    max-width: 1240px;
+    margin: 0 auto;
+    padding: 24px 24px 60px;
+  }
+
+  /* Top bar: brand + session controls */
+  .topbar{
+    display:grid; grid-template-columns: 1fr auto 1fr; align-items:center;
+    gap:16px;
+    margin-bottom: 20px; padding-bottom: 14px;
+    border-bottom: 1px solid var(--rule);
+  }
+  .topbar-brand{ display:flex; align-items:center; gap:10px; grid-column: 2; justify-content:center; text-align:center; }
+  .topbar-brand span{
+    font-family:Verdana, Geneva, sans-serif; font-size: 16px; color: var(--brand-darker); font-weight:600;
+  }
+  .topbar-right{ display:flex; align-items:center; gap:14px; grid-column: 3; justify-content:flex-end; flex-wrap:wrap; }
+  .topbar-user{
+    font-size:12.5px; color: var(--ink-soft);
+    display:flex; align-items:center; gap:6px;
+  }
+  .topbar-user b{ color: var(--ink); font-weight:600; }
+  .topbar-link{
+    font-size:13px; font-weight:600; text-decoration:none;
+    color: var(--brand-dark); border:1px solid var(--brand); border-radius:3px;
+    padding:7px 13px; transition: background .15s ease, color .15s ease;
+  }
+  .topbar-link:hover{ background: var(--brand); color:#fff; }
+
+  /* Drop zone */
+  #dropzone{
+    border: 2px dashed var(--rule); border-radius: 3px; background: var(--white);
+    padding: 46px 24px; text-align: center; cursor: pointer;
+    transition: border-color 0.15s ease, background 0.15s ease;
+  }
+  #dropzone.drag{ border-color: var(--brand); background: var(--brand-soft); }
+  #dropzone h2{ font-family:Verdana, Geneva, sans-serif; font-size: 20px; margin: 0 0 6px; color: var(--brand-darker); }
+  #dropzone p{ color: var(--ink-soft); margin: 0 0 18px; font-size: 14px; }
+  #dropzone input[type="file"]{ display:none; }
+
+  /* Upload progress */
+  .upload-progress-list{
+    margin: 16px auto 0; display:flex; flex-direction:column; gap:10px;
+    text-align:left; max-width: 620px;
+  }
+  .upload-progress-list:empty{ margin:0; }
+  .upload-progress-item{
+    background: var(--white); border:1px solid var(--paper-line); border-radius:3px;
+    padding:10px 12px;
+  }
+  .upload-progress-row{
+    display:flex; align-items:center; justify-content:space-between; gap:10px;
+    margin-bottom:6px;
+  }
+  .upload-progress-name{
+    font-size:12.5px; color: var(--ink); font-weight:600;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:280px;
+  }
+  .upload-progress-pct{
+    font-size:12px; color: var(--brand-dark); font-variant-numeric: tabular-nums; flex-shrink:0;
+    min-width: 34px; text-align:right;
+  }
+  .upload-progress-track{
+    width:100%; height:7px; border-radius:3px; background: var(--paper-alt);
+    overflow:hidden;
+  }
+  .upload-progress-fill{
+    height:100%; width:0%; border-radius:3px;
+    background-color: var(--brand);
+    background-image:
+      linear-gradient(90deg, var(--brand), var(--brand-dark)),
+      linear-gradient(135deg, rgba(255,255,255,0.3) 25%, transparent 25%,
+        transparent 50%, rgba(255,255,255,0.3) 50%, rgba(255,255,255,0.3) 75%,
+        transparent 75%, transparent);
+    background-size: 100% 100%, 22px 22px;
+    background-position: 0 0, 0 0;
+    transition: width 0.35s ease;
+    animation: upload-stripes 0.9s linear infinite;
+  }
+  @keyframes upload-stripes{
+    from{ background-position: 0 0, 0 0; }
+    to{ background-position: 0 0, 22px 0; }
+  }
+  .upload-progress-status{
+    font-size:11.5px; color: var(--ink-soft); margin-top:6px;
+    display:flex; align-items:center; gap:6px;
+  }
+  .upload-progress-status .check{
+    display:none; color: var(--green); font-weight:700;
+  }
+  .upload-progress-item.done .upload-progress-fill{
+    background-image: linear-gradient(90deg, var(--green), var(--green));
+    animation: none;
+  }
+  .upload-progress-item.done .upload-progress-pct{ color: var(--green); }
+  .upload-progress-item.done .upload-progress-status .check{ display:inline; }
+  .upload-progress-item.error .upload-progress-fill{
+    background-image: linear-gradient(90deg, var(--accent), var(--accent));
+    animation: none;
+  }
+  .upload-progress-item.error .upload-progress-pct{ color: var(--accent); }
+  .upload-progress-item.error .upload-progress-status{ color: var(--accent); }
+
+  .btn{
+    font: inherit; font-size: 13px; font-weight: 600; letter-spacing: 0.3px;
+    padding: 9px 16px; border-radius: 3px; border: 1.5px solid var(--brand);
+    background: var(--brand); color: var(--white); cursor: pointer;
+    transition: transform 0.08s ease, opacity 0.15s ease; white-space: nowrap;
+  }
+  .btn:hover{ opacity: 0.85; }
+  .btn:active{ transform: translateY(1px); }
+  .btn.ghost{ background: transparent; color: var(--brand-darker); border-color: var(--rule); }
+  .btn.ghost:hover{ border-color: var(--brand); }
+  .btn.accent{ background: var(--accent); border-color: var(--accent); }
+  .btn.green{ background: var(--green); border-color: var(--green); }
+  .btn:disabled{ opacity: 0.4; cursor: default; }
+  .btn:focus-visible, input:focus-visible, select:focus-visible{
+    outline: 2px solid var(--brand); outline-offset: 2px;
+  }
+
+  /* Storage-unavailable notice */
+  .storage-warning{
+    margin: 18px auto 0; max-width: 560px; text-align:left;
+    background: #fbf1df; border: 1px solid #e6cf9e; color: #6b4f1d;
+    border-radius: 3px; padding: 10px 14px; font-size: 12.5px; line-height:1.5;
+  }
+  .storage-warning code{
+    background: rgba(0,0,0,0.06); padding: 1px 5px; border-radius: 3px; font-size:11.5px;
+  }
+
+  /* Resume / continue where left off */
+  .resume-section{
+    margin: 26px auto 0; max-width: 560px; text-align:left;
+  }
+  .resume-divider{
+    display:flex; align-items:center; gap:12px;
+    font-size: 12px; color: var(--ink-soft);
+    text-transform:uppercase; letter-spacing:.06em;
+    margin-bottom: 16px;
+  }
+  .resume-divider::before, .resume-divider::after{
+    content:''; flex:1; height:1px; background: var(--rule);
+  }
+  .resume-list{
+    display:flex; flex-direction:column; gap:10px; margin-bottom: 14px;
+    max-height: 320px; overflow-y:auto; padding-right:2px;
+  }
+  .resume-item{
+    display:flex; align-items:flex-start; gap:12px;
+    background: var(--white); border:1px solid var(--paper-line); border-radius:3px;
+    padding:12px 14px; cursor:pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.08s ease;
+  }
+  .resume-item:hover{
+    border-color: var(--brand); box-shadow: 0 2px 10px rgba(76,128,138,0.16);
+  }
+  .resume-item:active{ transform: translateY(1px); }
+  .resume-item-icon{
+    flex-shrink:0; width:36px; height:36px; border-radius:3px;
+    background: transparent;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .resume-item-icon img{ width:32px; height:32px; object-fit:contain; display:block; }
+  .resume-item-info{ flex:1; min-width:0; }
+  .resume-item-name{ font-size:13.5px; font-weight:700; color: var(--ink); }
+  .resume-item-file{
+    font-size:11.5px; color: var(--ink-soft); margin-top:1px;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .resume-item-preview{
+    font-family:Verdana, Geneva, sans-serif; font-size:11px; color: var(--brand-dark);
+    background: var(--brand-soft); border-radius:3px; padding:3px 7px;
+    margin-top:6px; display:inline-block; max-width:100%;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .resume-item-meta{ font-size:11px; color: var(--ink-soft); margin-top:6px; }
+  .resume-item-actions{
+    flex-shrink:0; display:flex; flex-direction:column; align-items:flex-end; gap:6px;
+  }
+  .resume-item-open{
+    font: inherit; font-size:11.5px; font-weight:600; color: var(--brand-dark);
+    background: var(--brand-soft); border: 1px solid var(--brand-soft);
+    border-radius:3px; padding:5px 10px; cursor:pointer; white-space:nowrap;
+  }
+  .resume-item-open:hover{ background: var(--brand); color:#fff; }
+  .resume-item-remove{
+    font: inherit; font-size:14px; line-height:1; color: var(--ink-soft);
+    background:none; border:none; cursor:pointer; padding:4px;
+  }
+  .resume-item-remove:hover{ color: var(--accent); }
+  .resume-actions{ display:flex; align-items:center; justify-content:center; gap:16px; }
+  .resume-clear{
+    background:none; border:none; cursor:pointer; font-family:inherit;
+    font-size:12px; color: var(--ink-soft); text-decoration:underline;
+  }
+  .resume-clear:hover{ color: var(--accent); }
+
+  #workbench{ display:none; }
+  #workbench.active{ display:block; }
+
+  /* Sticky wrapper around the whole binder (workbook strip + sheet tabs + panel)
+     so it stays in view while the page scrolls. Slightly wider than the
+     surrounding frame, and given a solid background so content scrolling
+     underneath it doesn't show through. */
+  .binder-sticky{
+    position: sticky; top: 12px; z-index: 30;
+    margin: 0 -22px; padding: 0 22px 6px;
+    background: var(--paper);
+  }
+
+  /* Workbook strip (binder level) */
+  .binder-strip{
+    display:flex; align-items:flex-end; gap: 3px; flex-wrap: wrap; margin-bottom: 0;
+  }
+  .binder-tab{
+    background: var(--brand); color: #e7f0f1; padding: 9px 14px 10px; border-radius: 3px 3px 0 0;
+    cursor: pointer; font-size: 12px; position: relative; min-width: 108px; max-width: 240px;
+    border: 1px solid var(--brand-dark); border-bottom: none;
+  }
+  .binder-tab .wb-name{ font-weight: 700; letter-spacing: 0.3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-right: 14px; }
+  .binder-tab .wb-file{ font-size: 10.5px; opacity: 0.85; margin-top: 2px; white-space: nowrap; overflow:hidden; text-overflow: ellipsis; max-width: 200px; }
+  .binder-tab.active{ background: var(--brand-darker); color: var(--white); }
+  .binder-tab .wb-close{
+    position:absolute; top: 4px; right: 6px; font-size: 11px; opacity: 0.7; cursor:pointer;
+  }
+  .binder-tab .wb-close:hover{ opacity: 1; color: var(--accent-soft); }
+  .binder-tab .wb-dot{
+    display:inline-block; width: 6px; height:6px; border-radius: 50%;
+    background: var(--accent-soft); margin-left: 6px; vertical-align: middle;
+  }
+  .binder-add{
+    background: transparent; color: var(--ink-soft); border: 1px dashed var(--rule);
+    border-bottom: none; border-radius: 3px 3px 0 0; padding: 9px 16px; cursor:pointer;
+    font-size: 18px; line-height: 1; align-self: stretch; display:flex; align-items:center;
+  }
+  .binder-add:hover{ color: var(--brand-darker); border-color: var(--brand); }
+
+  .binder-body{
+    background: var(--brand-darker); border-radius: 0 3px 3px 3px; padding: 14px 14px 0;
+  }
+
+  /* Sheet tabs (folder level) */
+  .tabs{ display:flex; align-items:flex-end; gap: 2px; margin-bottom: -1px; flex-wrap: wrap; }
+  .tab{
+    font-size: 12.5px; font-weight: 600; padding: 8px 16px 9px; background: var(--paper-alt);
+    border: 1px solid var(--rule); border-bottom: none; border-radius: 3px 3px 0 0;
+    cursor: pointer; color: var(--ink-soft); position: relative; top: 1px;
+  }
+  .tab.active{ background: var(--white); color: var(--ink); border-color: var(--brand-darker); border-bottom: 1px solid var(--white); }
+  .tab{ display:flex; align-items:center; gap: 8px; }
+  .tab .tab-close{
+    font-size: 10.5px; opacity: 0.55; cursor:pointer; line-height:1;
+  }
+  .tab .tab-close:hover{ opacity: 1; color: var(--accent); }
+
+  .panel{ background: var(--white); border: 1px solid var(--brand-darker); border-radius: 0 3px 3px 3px; }
+
+  .toolbar{
+    display:flex; gap: 10px; align-items:center; padding: 12px 14px;
+    border-bottom: 1px solid var(--rule); flex-wrap: wrap;
+  }
+  .toolbar input[type="text"]{
+    font: inherit; font-size: 13px; padding: 7px 10px; border: 1px solid var(--rule);
+    border-radius: 3px; background: var(--paper-alt); min-width: 190px;
+  }
+  .toolbar label{ font-size: 12.5px; color: var(--ink-soft); display:flex; align-items:center; gap: 6px; user-select:none; }
+  .spacer{ flex: 1; }
+  .save-status{ font-size: 11.5px; color: var(--white); white-space: nowrap; }
+  .save-status.dirty{ color: #ffe3b0; font-weight: 600; }
+
+  /* Fixed height so the panel never grows or shrinks when a filter/search/sort
+     changes how many rows are visible — only the inner scroll area reacts. */
+  .grid-wrap{ overflow: auto; height: 56vh; }
+  table{
+    border-collapse: collapse; width: 100%; table-layout: fixed; /* width is set from column widths in JS */
+    font-family:Verdana, Geneva, sans-serif; font-size: 13px;
+  }
+  thead th{
+    position: sticky; top: 0; background: var(--brand); color: var(--white);
+    font-family:Verdana, Geneva, sans-serif; font-weight: 600; font-size: 12px;
+    text-align: left; padding: 9px 16px 9px 10px; white-space: nowrap;
+    /* NOTE: no overflow:hidden here — the sort/filter and case-conversion dropdown
+       menus are positioned children of this cell and must be allowed to escape its
+       box. Truncation for long header labels is handled on .th-label below instead. */
+    cursor: pointer;
+    border-right: 1px solid var(--brand-dark); z-index: 2;
+  }
+  thead th:first-child{ z-index: 3; cursor:default; }
+  thead th .th-label{
+    display: inline-block; vertical-align: middle; overflow: hidden;
+    text-overflow: ellipsis; white-space: nowrap; max-width: calc(100% - 56px);
+  }
+  thead th .th-label[contenteditable="true"]{
+    outline: 2px solid var(--white); outline-offset: -2px; cursor: text;
+    background: rgba(255,255,255,0.18); white-space: normal; max-width: none;
+  }
+  thead th .arrow{ margin-left: 5px; opacity: 0.85; font-size: 10px; }
+  /* NOTE: dim these via color (not the opacity property) — opacity on this
+     wrapper would composite its dropdown-menu descendants too, making open
+     filter/case menus render see-through even though their background is
+     an opaque color. */
+  thead th .th-controls{ display:inline-flex; gap:7px; margin-left: 8px; vertical-align: middle; }
+  thead th .th-controls > span{ cursor:pointer; color: rgba(255,255,255,0.75); }
+  thead th .th-controls > span:hover{ color: var(--accent-soft); }
+  thead th .menubox{ position: relative; display:inline-block; }
+  thead th .menubox.filtered > .menu-trigger{ color: #ffe3b0; font-weight: 700; }
+  .col-resize-handle{
+    position: absolute; top: 0; right: 0; bottom: 0; width: 6px; cursor: col-resize; z-index: 4;
+  }
+  .col-resize-handle:hover, .col-resize-handle.dragging{ background: rgba(255,255,255,0.35); }
+
+  .dropdown-menu{
+    display:none; position:absolute; top: 100%; left: 0; margin-top: 4px;
+    background-color: var(--white); opacity: 1; color: var(--ink); border: 1px solid var(--brand-darker);
+    border-radius: 3px; overflow:hidden; min-width: 150px; z-index: 20;
+    box-shadow: 0 6px 16px rgba(0,0,0,0.28);
+    /* Always fully opaque, regardless of any ancestor's opacity/transparency styling. */
+    isolation: isolate;
+  }
+  .dropdown-menu.open{ display:block; }
+  .dropdown-menu button.item{
+    display:block; width:100%; text-align:left; background:none; border:none;
+    padding: 8px 12px; font-size: 12px; font-family:Verdana, Geneva, sans-serif;
+    color: var(--ink); cursor:pointer;
+  }
+  .dropdown-menu button.item:hover{ background: var(--paper-alt); }
+  .dropdown-menu hr{ border:none; border-top: 1px solid var(--rule); margin: 4px 0; }
+
+  .filter-menu{ width: 220px; padding: 8px; }
+  .filter-menu input[type="text"]{
+    width: 100%; font-size: 12px; padding: 6px 8px; border: 1px solid var(--rule);
+    border-radius: 3px; margin-bottom: 6px; box-sizing: border-box;
+  }
+  .filter-list{
+    max-height: 160px; overflow-y: auto; border: 1px solid var(--paper-line);
+    border-radius: 3px; padding: 4px 6px; background: var(--paper-alt);
+  }
+  .filter-list label{
+    display:flex; align-items:center; gap: 6px; font-size: 12px; padding: 3px 0;
+    font-family:Verdana, Geneva, sans-serif; color: var(--ink); cursor:pointer;
+  }
+  .filter-actions{ display:flex; justify-content: space-between; margin-top: 8px; gap: 6px; }
+  .filter-actions button{
+    font-size: 11.5px; padding: 6px 10px; border-radius: 3px; cursor:pointer;
+    font-family:Verdana, Geneva, sans-serif; font-weight: 600;
+  }
+  .filter-actions .apply-btn{ background: var(--brand); border: 1px solid var(--brand-dark); color: var(--white); }
+  .filter-actions .clear-btn{ background: transparent; border: 1px solid var(--rule); color: var(--ink-soft); }
+
+  tbody tr{ border-bottom: 1px solid var(--rule); }
+  tbody tr:nth-child(even) td{ background: #f2f3ec; }
+  tbody tr:hover td{ background: var(--green-soft); }
+
+  td{
+    padding: 7px 10px; border-right: 1px solid var(--paper-line); white-space: nowrap;
+    max-width: 320px; overflow: hidden; text-overflow: ellipsis;
+  }
+  td[contenteditable="true"]:focus{
+    outline: 2px solid var(--brand); outline-offset: -2px; background: var(--white) !important; white-space: normal;
+  }
+  td.edited{ background: var(--accent-soft) !important; }
+  td.rownum{
+    color: var(--ink-soft); font-size: 11px; text-align: right; background: var(--paper-alt) !important;
+    position: relative; user-select: none; white-space: nowrap;
+  }
+  td.rownum::after{
+    content:""; position:absolute; right: -2px; top:0; bottom:0; width: 2px; background: var(--brand); opacity: 0.6;
+  }
+  td.rownum .row-ctrls{ display:none; gap: 5px; align-items:center; justify-content:flex-end; }
+  td.rownum .row-ctrls span{ cursor:pointer; opacity: 0.75; }
+  td.rownum .row-ctrls span:hover{ opacity: 1; color: var(--accent); }
+  tbody tr:hover td.rownum .row-ctrls{ display:flex; }
+  tbody tr:hover td.rownum .idx{ display:none; }
+  .row-resize-handle{
+    position: absolute; left: 0; right: 0; bottom: -3px; height: 6px; cursor: row-resize; z-index: 3;
+  }
+  .row-resize-handle:hover, .row-resize-handle.dragging{ background: rgba(76,128,138,0.4); }
+
+  .foot{
+    display:flex; justify-content: space-between; padding: 10px 14px; font-size: 12px;
+    color: var(--white); background: var(--green); border-top: 1px solid var(--rule); flex-wrap: wrap; gap: 8px;
+    border-radius: 0 0 3px 3px;
+  }
+  .foot b{ color: var(--white); }
+  .empty-cell-msg{ padding: 30px; text-align:center; color: var(--ink-soft); font-size: 13px; }
+
+  /* Modal (replaces window.prompt/confirm which browsers may block in embedded views) */
+  #modalOverlay{
+    display:none; position:fixed; inset:0; background: rgba(31,42,36,0.45);
+    align-items:center; justify-content:center; z-index: 100;
+  }
+  #modalOverlay.open{ display:flex; }
+  .modal-box{
+    background: var(--white); border-radius: 3px; padding: 20px 22px; width: 320px;
+    box-shadow: 0 12px 30px rgba(0,0,0,0.3);
+  }
+  .modal-box p{ margin: 0 0 12px; font-size: 14px; color: var(--ink); }
+  .modal-box input[type="text"]{
+    width: 100%; font-size: 13px; padding: 8px 10px; border: 1px solid var(--rule);
+    border-radius: 3px; margin-bottom: 14px; box-sizing: border-box; font: inherit;
+  }
+  .modal-actions{ display:flex; justify-content:flex-end; gap: 8px; }
+  /* Warning variant (delete confirmations) */
+  .modal-box.warning{ border-top: 4px solid var(--accent); }
+  .modal-warn-head{
+    display:none; align-items:center; gap:8px; margin-bottom:10px;
+    color: var(--accent); font-weight:700; font-size:13px; letter-spacing:.04em; text-transform:uppercase;
+  }
+  .modal-box.warning .modal-warn-head{ display:flex; }
+  .modal-warn-icon{
+    width:22px; height:22px; border-radius:50%; background: var(--accent); color:#fff;
+    display:inline-flex; align-items:center; justify-content:center; font-size:14px; line-height:1;
+  }
+  .modal-sub{ display:none; margin:-4px 0 12px; font-size:12.5px; color: var(--ink-soft); word-break:break-word; }
+  .modal-box.warning .modal-sub.has-text{ display:block; }
+  #logoutOverlay{
+    display:none; position:fixed; inset:0; background: rgba(31,42,36,0.45);
+    align-items:center; justify-content:center; z-index: 200;
+  }
+  #logoutOverlay.open{ display:flex; }
+  button, input, select, textarea{ font-family:inherit; }
+</style>
+</head>
+<body>
+<div class="frame">
+
+  <div class="topbar">
+    <div class="topbar-brand"><span>EXPORT DESK</span></div>
+    <div class="topbar-right">
+      <a class="topbar-link" href="#" id="logoutLink">Log out</a>
+    </div>
+  </div>
+
+  <div id="dropzone">
+    <h2>Drop one or more spreadsheets here</h2>
+    <p>.xlsx, .xls, or .csv — each file becomes its own workbook, parsed entirely in your browser</p>
+    <button class="btn" id="chooseFileBtn" type="button">Choose file(s)</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" multiple>
+
+    <div id="storageWarning" class="storage-warning" style="display:none;">
+      Could not reach Supabase — check your internet connection or the values in
+      <code>supabase-config.js</code>.
+    </div>
+
+    <div id="resumeSection" class="resume-section" style="display:none;">
+      <div class="resume-divider">continue where you left off</div>
+      <div class="resume-list" id="resumeList"></div>
+      <div class="resume-actions">
+        <button class="btn ghost" id="resumeOpenBtn" type="button">Open all saved</button>
+        <button class="resume-clear" id="resumeClearBtn" type="button">Clear saved data</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="uploadProgressList" class="upload-progress-list"></div>
+
+  <div id="workbench">
+    <div class="binder-sticky">
+      <div class="binder-strip" id="binderStrip"></div>
+      <div class="binder-body">
+        <div class="tabs" id="tabs"></div>
+        <div class="panel">
+          <div class="toolbar">
+            <input type="text" id="search" placeholder="Search this sheet…">
+            <label><input type="checkbox" id="headerToggle" checked> First row is headers</label>
+            <div class="spacer"></div>
+            <button class="btn ghost" id="addColBtn" type="button">+ Column</button>
+            <button class="btn ghost" id="addRowBtn" type="button">+ Row at end</button>
+            <button class="btn ghost" id="clearFiltersBtn" type="button">Clear filters</button>
+            <button class="btn green" id="saveBtn" type="button">Save changes</button>
+            <button class="btn accent" id="exportBtn" type="button">Export .xlsx</button>
+          </div>
+          <div class="grid-wrap">
+            <table id="grid">
+              <thead id="gridHead"></thead>
+              <tbody id="gridBody"></tbody>
+            </table>
+          </div>
+          <div class="foot">
+            <span><b id="rowCount">0</b> rows &nbsp;&nbsp; <b id="colCount">0</b> columns &nbsp;&nbsp; sheet <b id="sheetLabel">—</b></span>
+            <span><span class="save-status" id="saveStatus"></span> &nbsp; <span class="save-status" id="pushStatus"></span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<div id="logoutOverlay" role="dialog" aria-modal="true" aria-labelledby="logoutTitle">
+  <div class="modal-box">
+    <p id="logoutTitle"><b>You have been logged out.</b><br>Where would you like to go?</p>
+    <div class="modal-actions">
+      <button class="btn ghost" id="goDashboardBtn" type="button">Main dashboard</button>
+      <button class="btn" id="goLoginBtn" type="button">Login page</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalOverlay">
+  <div class="modal-box" id="modalBox" role="alertdialog" aria-modal="true" aria-labelledby="modalMessage">
+    <div class="modal-warn-head"><span class="modal-warn-icon">!</span><span>Warning</span></div>
+    <p id="modalMessage"></p>
+    <p class="modal-sub" id="modalSub"></p>
+    <input type="text" id="modalInput" style="display:none;">
+    <div class="modal-actions">
+      <button class="btn ghost" id="modalCancel" type="button">Cancel</button>
+      <button class="btn" id="modalOk" type="button">OK</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(async function(){
+  // ---- Auth guard: bounce back to login if there is no Supabase session ----
+  const { data: { session } = {} } = await supabaseClient.auth.getSession();
+  if (!session){
+    window.location.href = 'login.html';
+    return;
+  }
+  const currentUserId = session.user.id;
+
+  // ---- State ----
+  // workbook: { id, label, fileName, sheets: {name:[[...]]}, sheetOrder: [], activeSheet, headerRow, dirty, savedAt, sortState, filters }
+  let workbooks = [];
+  let activeWorkbookId = null;
+  let workbookCounter = 0;
+  let colElements = []; // live <col> refs for the currently rendered table, for smooth drag-resize
+
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const chooseFileBtn = document.getElementById('chooseFileBtn');
+  const resumeSection = document.getElementById('resumeSection');
+  const resumeList = document.getElementById('resumeList');
+  const resumeOpenBtn = document.getElementById('resumeOpenBtn');
+  const resumeClearBtn = document.getElementById('resumeClearBtn');
+  const storageWarning = document.getElementById('storageWarning');
+  const workbench = document.getElementById('workbench');
+  const binderStrip = document.getElementById('binderStrip');
+  const tabsEl = document.getElementById('tabs');
+  const gridHead = document.getElementById('gridHead');
+  const gridBody = document.getElementById('gridBody');
+  const rowCountEl = document.getElementById('rowCount');
+  const colCountEl = document.getElementById('colCount');
+  const sheetLabelEl = document.getElementById('sheetLabel');
+  const saveStatusEl = document.getElementById('saveStatus');
+  const searchInput = document.getElementById('search');
+  const headerToggle = document.getElementById('headerToggle');
+
+  function activeWB(){ return workbooks.find(w => w.id === activeWorkbookId); }
+
+  // ---- Modal helper (custom confirm/prompt; some embedded browser views block window.confirm/prompt) ----
+  const modalOverlay = document.getElementById('modalOverlay');
+  const modalMessage = document.getElementById('modalMessage');
+  const modalInput = document.getElementById('modalInput');
+  const modalOk = document.getElementById('modalOk');
+  const modalCancel = document.getElementById('modalCancel');
+  let modalResolver = null;
+
+  const modalBox = document.getElementById('modalBox');
+  const modalSub = document.getElementById('modalSub');
+
+  function showModal({ message, withInput, defaultValue, detail, okLabel, cancelLabel, warning }){
+    return new Promise(resolve => {
+      modalResolver = resolve;
+      modalMessage.textContent = message;
+      modalSub.textContent = detail || '';
+      modalSub.classList.toggle('has-text', !!detail);
+      modalBox.classList.toggle('warning', !!warning);
+      modalOk.textContent = okLabel || 'OK';
+      modalCancel.textContent = cancelLabel || 'Cancel';
+      modalOk.classList.toggle('accent', !!warning);
+      if (withInput){
+        modalInput.style.display = 'block';
+        modalInput.value = defaultValue || '';
+      } else {
+        modalInput.style.display = 'none';
+      }
+      modalOverlay.classList.add('open');
+      if (withInput) setTimeout(() => { modalInput.focus(); modalInput.select(); }, 30);
+      // For warnings, focus "No" so an accidental Enter never deletes anything
+      else if (warning) setTimeout(() => modalCancel.focus(), 30);
+    });
+  }
+  function closeModal(result){
+    modalOverlay.classList.remove('open');
+    if (modalResolver) modalResolver(result);
+    modalResolver = null;
+  }
+  modalOk.addEventListener('click', () => {
+    closeModal(modalInput.style.display === 'block' ? (modalInput.value) : true);
+  });
+  modalCancel.addEventListener('click', () => closeModal(null));
+  modalInput.addEventListener('keydown', e => {
+    if (e.key === 'Enter'){ e.preventDefault(); closeModal(modalInput.value); }
+    if (e.key === 'Escape'){ e.preventDefault(); closeModal(null); }
+  });
+  function askConfirm(message){
+    return showModal({ message, withInput: false }).then(r => r === true);
+  }
+  // Warning-style delete confirmation with Yes / No buttons
+  function askDelete(detail){
+    return showModal({
+      message: 'Are you sure you want to delete this?',
+      detail, warning: true, okLabel: 'Yes', cancelLabel: 'No'
+    }).then(r => r === true);
+  }
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && modalOverlay.classList.contains('open') && modalInput.style.display !== 'block'){
+      closeModal(null);
+    }
+  });
+  function askPrompt(message, defaultValue){
+    return showModal({ message, withInput: true, defaultValue }).then(r => (r === null ? null : r));
+  }
+
+  // ---- File loading ----
+  chooseFileBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', e => {
+    if (e.target.files && e.target.files.length) handleFiles(e.target.files);
+    fileInput.value = '';
+  });
+
+  ['dragenter','dragover'].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('drag'); })
+  );
+  ['dragleave','drop'].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('drag'); })
+  );
+  dropzone.addEventListener('drop', e => {
+    if (e.dataTransfer.files && e.dataTransfer.files.length) handleFiles(e.dataTransfer.files);
+  });
+  dropzone.addEventListener('click', e => {
+    if (e.target === chooseFileBtn || resumeSection.contains(e.target)) return;
+    fileInput.click();
+  });
+
+  function handleFiles(fileList){
+    const uploadProgressList = document.getElementById('uploadProgressList');
+    Array.from(fileList).forEach(file => {
+      // Build a progress row for this file
+      const item = document.createElement('div');
+      item.className = 'upload-progress-item';
+      item.innerHTML =
+        '<div class="upload-progress-row">' +
+          '<span class="upload-progress-name"></span>' +
+          '<span class="upload-progress-pct">0%</span>' +
+        '</div>' +
+        '<div class="upload-progress-track"><div class="upload-progress-fill"></div></div>' +
+        '<div class="upload-progress-status">' +
+          '<span class="check">✓</span><span class="status-text">Importing…</span>' +
+        '</div>';
+      item.querySelector('.upload-progress-name').textContent = file.name;
+      const fillEl = item.querySelector('.upload-progress-fill');
+      const pctEl = item.querySelector('.upload-progress-pct');
+      const statusTextEl = item.querySelector('.status-text');
+      uploadProgressList.appendChild(item);
+
+      let shownPct = 0;
+      const setPct = pct => {
+        shownPct = Math.max(shownPct, Math.min(100, Math.round(pct)));
+        fillEl.style.width = shownPct + '%';
+        pctEl.textContent = shownPct + '%';
+      };
+
+      // Local files are usually read faster than any progress event can report,
+      // so animate a believable climb toward ~90% while the real read/parse
+      // happens in the background, then finish for real once it's done.
+      const simStart = Date.now();
+      const MIN_VISIBLE_MS = 900; // keeps the bar visible long enough to read
+      const simTimer = setInterval(() => {
+        if (shownPct < 90){
+          setPct(shownPct + Math.random() * 10 + 4);
+        }
+      }, 140);
+
+      const reader = new FileReader();
+
+      reader.onprogress = evt => {
+        if (evt.lengthComputable){
+          const real = Math.round((evt.loaded / evt.total) * 90);
+          if (real > shownPct) setPct(real);
+        }
+      };
+
+      let parsedWorkbook = null;
+      let parseError = null;
+
+      reader.onload = evt => {
+        try{
+          const data = new Uint8Array(evt.target.result);
+          parsedWorkbook = XLSX.read(data, { type: 'array' });
+        }catch(err){
+          parseError = err;
+        }
+        finishImport();
+      };
+
+      reader.onerror = () => {
+        parseError = new Error('The file could not be read.');
+        finishImport();
+      };
+
+      function finishImport(){
+        clearInterval(simTimer);
+        const elapsed = Date.now() - simStart;
+        const remaining = Math.max(0, MIN_VISIBLE_MS - elapsed);
+        // Ease smoothly up to 100% rather than jumping, then hold briefly
+        // so the "successfully imported" state is actually visible.
+        setTimeout(() => {
+          setPct(100);
+          if (parseError){
+            item.classList.add('error');
+            statusTextEl.textContent = 'Import failed';
+            showModal({ message: 'Could not read "' + file.name + '": ' + parseError.message, withInput:false });
+          } else {
+            item.classList.add('done');
+            statusTextEl.textContent = 'Imported successfully';
+            addWorkbook(parsedWorkbook, file.name);
+          }
+          setTimeout(() => {
+            item.style.opacity = '0';
+            item.style.transition = 'opacity 0.4s ease';
+            setTimeout(() => item.remove(), 400);
+          }, 1100);
+        }, remaining);
+      }
+
+      reader.readAsArrayBuffer(file);
+    });
+  }
+
+  function freshWorkbookShell(id, label, fileName, sheets, sheetOrder){
+    return {
+      id, label, fileName, sheets, sheetOrder,
+      activeSheet: sheetOrder[0],
+      headerRow: true,
+      dirty: false,
+      savedAt: null,
+      sortState: { col: null, dir: 0 },
+      filters: {}, // { sheetName: { colIndex: Set([...values]) } }
+      colWidths: {}, // { sheetName: [widthPx, ...] }
+      rowHeights: {} // { sheetName: { origRowIndex: heightPx } }
+    };
+  }
+
+  // ---- Supabase persistence (keeps uploaded/saved workbooks across visits) ----
+
+  function serializeFilters(filters){
+    const out = {};
+    Object.keys(filters || {}).forEach(sheetName => {
+      const colFilters = filters[sheetName] || {};
+      const outCol = {};
+      Object.keys(colFilters).forEach(colKey => {
+        const val = colFilters[colKey];
+        outCol[colKey] = val instanceof Set ? Array.from(val) : val;
+      });
+      out[sheetName] = outCol;
+    });
+    return out;
+  }
+
+  function deserializeFilters(filters){
+    const out = {};
+    Object.keys(filters || {}).forEach(sheetName => {
+      const colFilters = filters[sheetName] || {};
+      const outCol = {};
+      Object.keys(colFilters).forEach(colKey => {
+        const val = colFilters[colKey];
+        outCol[colKey] = Array.isArray(val) ? new Set(val) : val;
+      });
+      out[sheetName] = outCol;
+    });
+    return out;
+  }
+
+  function workbookToRow(wb){
+    return {
+      id: wb.id,
+      owner_id: currentUserId,
+      label: wb.label,
+      file_name: wb.fileName,
+      sheet_order: wb.sheetOrder,
+      active_sheet: wb.activeSheet,
+      header_row: !!wb.headerRow,
+      sort_state: wb.sortState || { col: null, dir: 0 },
+      filters: serializeFilters(wb.filters || {}),
+      col_widths: wb.colWidths || {},
+      row_heights: wb.rowHeights || {},
+      saved_at: (wb.savedAt instanceof Date ? wb.savedAt : new Date()).toISOString()
+    };
+  }
+
+  // Upserts a workbook's metadata row plus one row per sheet, and removes any
+  // sheet rows that were deleted locally so Supabase mirrors the client exactly.
+  async function persistWorkbook(wb){
+    try{
+      const { error: wbErr } = await supabaseClient.from('workbooks').upsert(workbookToRow(wb));
+      if (wbErr) throw wbErr;
+
+      const sheetRows = wb.sheetOrder.map((name, idx) => ({
+        workbook_id: wb.id,
+        sheet_name: name,
+        sheet_index: idx,
+        data: wb.sheets[name] || []
+      }));
+      if (sheetRows.length){
+        const { error: sheetErr } = await supabaseClient
+          .from('workbook_sheets')
+          .upsert(sheetRows, { onConflict: 'workbook_id,sheet_name' });
+        if (sheetErr) throw sheetErr;
+      }
+
+      const { data: existingSheets } = await supabaseClient
+        .from('workbook_sheets').select('sheet_name').eq('workbook_id', wb.id);
+      if (existingSheets){
+        const staleNames = existingSheets
+          .map(r => r.sheet_name)
+          .filter(name => !wb.sheetOrder.includes(name));
+        if (staleNames.length){
+          await supabaseClient.from('workbook_sheets').delete()
+            .eq('workbook_id', wb.id).in('sheet_name', staleNames);
+        }
+      }
+      pushDashboardMeasures(wb);   // no-op unless this is the Emerge 4Biz Overall DB workbook
+      return true;
+    }catch(err){
+      console.error('Supabase save failed:', err);
+      return false;
+    }
+  }
+
+  async function deleteWorkbookRemote(id){
+    try{
+      const { error } = await supabaseClient.from('workbooks').delete().eq('id', id);
+      if (error) throw error;
+    }catch(err){
+      console.error('Supabase delete failed:', err);
+    }
+  }
+
+  // Lightweight list for the "continue where you left off" section — metadata only.
+  async function fetchWorkbookSummaries(){
+    try{
+      const { data, error } = await supabaseClient
+        .from('workbooks')
+        .select('id, label, file_name, sheet_order, saved_at')
+        .order('saved_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    }catch(err){
+      console.error('Supabase fetch failed:', err);
+      storageWarning.textContent = 'Could not reach Supabase — check your connection or supabase-config.js.';
+      storageWarning.style.display = '';
+      return [];
+    }
+  }
+
+  // Full workbook + all of its sheet data, reconstructed into the client shape.
+  async function fetchFullWorkbook(id){
+    try{
+      const { data: wbRow, error: wbErr } = await supabaseClient
+        .from('workbooks').select('*').eq('id', id).single();
+      if (wbErr) throw wbErr;
+      const { data: sheetRows, error: sheetErr } = await supabaseClient
+        .from('workbook_sheets').select('*').eq('workbook_id', id).order('sheet_index', { ascending: true });
+      if (sheetErr) throw sheetErr;
+
+      const sheets = {};
+      (sheetRows || []).forEach(r => { sheets[r.sheet_name] = r.data; });
+      return {
+        id: wbRow.id,
+        label: /^Workbook \d+$/.test(wbRow.label || '') ? wbRow.file_name : wbRow.label,
+        fileName: wbRow.file_name,
+        sheets,
+        sheetOrder: wbRow.sheet_order && wbRow.sheet_order.length ? wbRow.sheet_order : Object.keys(sheets),
+        activeSheet: wbRow.active_sheet,
+        headerRow: !!wbRow.header_row,
+        dirty: false,
+        savedAt: wbRow.saved_at ? new Date(wbRow.saved_at) : null,
+        sortState: wbRow.sort_state || { col: null, dir: 0 },
+        filters: deserializeFilters(wbRow.filters),
+        colWidths: wbRow.col_widths || {},
+        rowHeights: wbRow.row_heights || {}
+      };
+    }catch(err){
+      console.error('Supabase fetch workbook failed:', err);
+      return null;
+    }
+  }
+
+  const RESUME_ICON_SVG =
+    '<img src="data:image/png;base64,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" alt="Excel workbook" draggable="false">';
+
+  async function refreshResumeSection(){
+    storageWarning.style.display = 'none';
+    const summaries = await fetchWorkbookSummaries();
+    resumeList.innerHTML = '';
+    if (!summaries.length){
+      resumeSection.style.display = 'none';
+      return;
+    }
+    resumeSection.style.display = '';
+
+    summaries.forEach(wb => {
+      const row = document.createElement('div');
+      row.className = 'resume-item';
+      row.dataset.id = wb.id;
+
+      const sheetCount = (wb.sheet_order || []).length;
+      const savedLabel = wb.saved_at
+        ? new Date(wb.saved_at).toLocaleString([], { dateStyle:'medium', timeStyle:'short' })
+        : '';
+
+      row.innerHTML =
+        '<div class="resume-item-icon">' + RESUME_ICON_SVG + '</div>' +
+        '<div class="resume-item-info">' +
+          '<div class="resume-item-name"></div>' +
+          '<div class="resume-item-file"></div>' +
+          '<div class="resume-item-meta"></div>' +
+        '</div>' +
+        '<div class="resume-item-actions">' +
+          '<button class="resume-item-open" type="button">Open</button>' +
+          '<button class="resume-item-remove" type="button" title="Remove from storage"></button>' +
+        '</div>';
+
+      row.querySelector('.resume-item-name').textContent = /^Workbook \d+$/.test(wb.label || '') ? wb.file_name : wb.label;
+      row.querySelector('.resume-item-file').textContent = wb.file_name;
+      row.querySelector('.resume-item-meta').textContent =
+        sheetCount + (sheetCount === 1 ? ' sheet' : ' sheets') + (savedLabel ? ', saved ' + savedLabel : '');
+
+      row.addEventListener('click', () => openStoredWorkbook(wb.id));
+      row.querySelector('.resume-item-open').addEventListener('click', (e) => {
+        e.stopPropagation();
+        openStoredWorkbook(wb.id);
+      });
+      row.querySelector('.resume-item-remove').addEventListener('click', async (e) => {
+        e.stopPropagation();
+        const ok = await askDelete('"' + wb.label + '" will be permanently removed from saved data. This cannot be undone.');
+        if (!ok) return;
+        await deleteWorkbookRemote(wb.id);
+        refreshResumeSection();
+      });
+
+      resumeList.appendChild(row);
+    });
+  }
+
+  async function openStoredWorkbook(id){
+    const ids = id ? [id] : (await fetchWorkbookSummaries()).map(s => s.id);
+    if (!ids.length) return;
+    const fetched = await Promise.all(ids.map(fetchFullWorkbook));
+    const valid = fetched.filter(Boolean);
+    if (!valid.length) return;
+    workbooks = valid;
+    let maxNum = 0;
+    workbooks.forEach(wb => {
+      const m = /^Workbook (\d+)$/.exec(wb.label);
+      if (m) maxNum = Math.max(maxNum, parseInt(m[1], 10));
+    });
+    workbookCounter = Math.max(workbookCounter, maxNum);
+    activeWorkbookId = workbooks.length ? workbooks[0].id : null;
+    afterLoad();
+  }
+
+  resumeOpenBtn.addEventListener('click', () => openStoredWorkbook(null));
+
+  resumeClearBtn.addEventListener('click', async () => {
+    const ok = await askDelete('All previously saved workbooks will be permanently removed. This cannot be undone.');
+    if (!ok) return;
+    const summaries = await fetchWorkbookSummaries();
+    await Promise.all(summaries.map(s => deleteWorkbookRemote(s.id)));
+    refreshResumeSection();
+  });
+
+  function addWorkbook(xlsxWb, fileName){
+    workbookCounter += 1;
+    const sheets = {};
+    const sheetOrder = xlsxWb.SheetNames.slice();
+    sheetOrder.forEach(name => {
+      const ws = xlsxWb.Sheets[name];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
+      // Excel often reports a huge "used range" from formatting alone; drop trailing blank rows.
+      while (rows.length > 1 && rows[rows.length - 1].every(v => v === '' || v == null)) rows.pop();
+      sheets[name] = rows.length ? rows : [['']];
+    });
+    const id = (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : ('wb_' + Date.now() + '_' + Math.random().toString(36).slice(2));
+    const entry = freshWorkbookShell(id, fileName, fileName, sheets, sheetOrder);
+    workbooks.push(entry);
+    activeWorkbookId = entry.id;
+    afterLoad();
+    persistWorkbook(entry).then(ok => {
+      if (ok){
+        entry.savedAt = new Date();
+        entry.dirty = false;
+        renderBinderStrip();
+        updateSaveStatus();
+      } else {
+        showModal({ message: 'Could not save "' + entry.label + '" to Supabase. Check your connection and supabase-config.js, then use "Save changes" to retry.', withInput:false });
+      }
+    });
+  }
+
+  function afterLoad(){
+    dropzone.style.display = 'none';
+    workbench.classList.add('active');
+    renderBinderStrip();
+    renderTabs();
+    renderGrid();
+  }
+
+  // ---- Binder (workbook) strip ----
+  function renderBinderStrip(){
+    binderStrip.innerHTML = '';
+    workbooks.forEach(wb => {
+      const tab = document.createElement('div');
+      tab.className = 'binder-tab' + (wb.id === activeWorkbookId ? ' active' : '');
+      tab.innerHTML =
+        '<span class="wb-close" title="Remove workbook">✕</span>' +
+        '<div class="wb-name"></div>' +
+        '<div class="wb-file"></div>';
+      tab.querySelector('.wb-name').textContent = wb.label;
+      if (wb.dirty){
+        const dot = document.createElement('span');
+        dot.className = 'wb-dot';
+        dot.title = 'Unsaved changes';
+        tab.querySelector('.wb-name').appendChild(dot);
+      }
+      if (wb.fileName === wb.label) tab.querySelector('.wb-file').remove();
+      else tab.querySelector('.wb-file').textContent = wb.fileName;
+      tab.title = wb.label;
+      tab.addEventListener('click', (e) => {
+        if (e.target.classList.contains('wb-close')) return;
+        activeWorkbookId = wb.id;
+        searchInput.value = '';
+        renderBinderStrip();
+        renderTabs();
+        renderGrid();
+      });
+      tab.querySelector('.wb-close').addEventListener('click', async () => {
+        const ok = await askDelete('"' + wb.label + '"' + (wb.dirty ? ' has unsaved changes and' : '') +
+          ' will be permanently removed from saved data. This cannot be undone.');
+        if (!ok) return;
+        workbooks = workbooks.filter(w => w.id !== wb.id);
+        if (activeWorkbookId === wb.id){
+          activeWorkbookId = workbooks.length ? workbooks[0].id : null;
+        }
+        await deleteWorkbookRemote(wb.id);
+        if (!workbooks.length){
+          workbench.classList.remove('active');
+          dropzone.style.display = '';
+          refreshResumeSection();
+          return;
+        }
+        renderBinderStrip();
+        renderTabs();
+        renderGrid();
+      });
+      binderStrip.appendChild(tab);
+    });
+    const addTab = document.createElement('div');
+    addTab.className = 'binder-add';
+    addTab.textContent = '+';
+    addTab.title = 'Add file(s)';
+    addTab.addEventListener('click', () => fileInput.click());
+    binderStrip.appendChild(addTab);
+  }
+
+  // ---- Sheet tabs ----
+  function renderTabs(){
+    const wb = activeWB();
+    tabsEl.innerHTML = '';
+    if (!wb) return;
+    headerToggle.checked = wb.headerRow;
+    wb.sheetOrder.forEach(name => {
+      const tab = document.createElement('div');
+      tab.className = 'tab' + (name === wb.activeSheet ? ' active' : '');
+
+      const label = document.createElement('span');
+      label.className = 'tab-label';
+      label.textContent = name;
+      tab.appendChild(label);
+
+      const close = document.createElement('span');
+      close.className = 'tab-close';
+      close.textContent = '✕';
+      close.title = 'Delete sheet';
+      close.addEventListener('click', async (e) => {
+        e.stopPropagation();
+        if (wb.sheetOrder.length <= 1){
+          await showModal({ message: 'A workbook needs at least one sheet, so this one can\'t be deleted.', withInput: false });
+          return;
+        }
+        const ok = await askConfirm('Delete sheet "' + name + '"? This cannot be undone.');
+        if (!ok) return;
+        deleteSheet(wb, name);
+      });
+      tab.appendChild(close);
+
+      tab.addEventListener('click', () => {
+        wb.activeSheet = name;
+        searchInput.value = '';
+        renderTabs();
+        renderGrid();
+      });
+      tabsEl.appendChild(tab);
+    });
+  }
+
+  function deleteSheet(wb, name){
+    const idx = wb.sheetOrder.indexOf(name);
+    if (idx === -1) return;
+    wb.sheetOrder.splice(idx, 1);
+    delete wb.sheets[name];
+    if (wb.filters) delete wb.filters[name];
+    if (wb.colWidths) delete wb.colWidths[name];
+    if (wb.rowHeights) delete wb.rowHeights[name];
+    if (wb.activeSheet === name){
+      wb.activeSheet = wb.sheetOrder[Math.min(idx, wb.sheetOrder.length - 1)];
+    }
+    wb.sortState = { col: null, dir: 0 };
+    searchInput.value = '';
+    markDirty();
+    renderTabs();
+    renderGrid();
+  }
+
+  // ---- Save / Export ----
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const wb = activeWB();
+    if (!wb) return;
+    saveStatusEl.textContent = 'Saving…';
+    saveStatusEl.classList.remove('dirty');
+    const ok = await persistWorkbook(wb);
+    if (ok){
+      wb.dirty = false;
+      wb.savedAt = new Date();
+      document.querySelectorAll('#gridBody td.edited').forEach(td => td.classList.remove('edited'));
+      renderBinderStrip();
+      updateSaveStatus();
+    } else {
+      updateSaveStatus();
+      showModal({ message: 'Could not save changes to Supabase. Check your connection and supabase-config.js, then try again.', withInput:false });
+    }
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', () => {
+    const wb = activeWB();
+    if (!wb) return;
+    const out = XLSX.utils.book_new();
+    wb.sheetOrder.forEach(name => {
+      const ws = XLSX.utils.aoa_to_sheet(wb.sheets[name]);
+      XLSX.utils.book_append_sheet(out, ws, name);
+    });
+    const bytes = XLSX.write(out, { bookType: 'xlsx', type: 'array' });
+    const blob = new Blob([bytes], { type: 'application/octet-stream' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = wb.label.replace(/\.(xlsx|xls|csv)$/i, '') + '.xlsx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+  });
+
+  function updateSaveStatus(){
+    const wb = activeWB();
+    if (!wb) { saveStatusEl.textContent = ''; return; }
+    if (wb.dirty){
+      saveStatusEl.textContent = 'Unsaved edits in ' + wb.label;
+      saveStatusEl.classList.add('dirty');
+    } else if (wb.savedAt){
+      saveStatusEl.textContent = 'Saved ' + wb.savedAt.toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+      saveStatusEl.classList.remove('dirty');
+    } else {
+      saveStatusEl.textContent = '';
+      saveStatusEl.classList.remove('dirty');
+    }
+  }
+
+  function markDirty(){
+    const wb = activeWB();
+    if (!wb) return;
+    if (!wb.dirty){
+      wb.dirty = true;
+      renderBinderStrip();
+    }
+    updateSaveStatus();
+  }
+
+  // ---- Toolbar actions ----
+  headerToggle.addEventListener('change', () => {
+    const wb = activeWB();
+    if (!wb) return;
+    wb.headerRow = headerToggle.checked;
+    wb.sortState = { col: null, dir: 0 };
+    clearFiltersForActiveSheet();
+    renderGrid();
+  });
+
+  searchInput.addEventListener('input', () => {
+    renderGrid();
+  });
+
+  document.getElementById('addRowBtn').addEventListener('click', () => {
+    const wb = activeWB();
+    if (!wb) return;
+    const rows = wb.sheets[wb.activeSheet];
+    const cols = getColCount(wb);
+    rows.push(new Array(cols).fill(''));
+    markDirty();
+    renderGrid();
+  });
+
+  document.getElementById('addColBtn').addEventListener('click', async () => {
+    const wb = activeWB();
+    if (!wb) return;
+    const name = await askPrompt('Name the new column:', 'New column');
+    if (name === null) return; // cancelled
+    const rows = wb.sheets[wb.activeSheet];
+    const cols = getColCount(wb);
+    // Normalize every row to the same width first, so the new column lines up for all rows.
+    rows.forEach(r => { while (r.length < cols) r.push(''); });
+    rows.forEach((r, i) => {
+      if (i === 0 && wb.headerRow) r.push(name.trim() ? name.trim() : ('Column ' + (cols + 1)));
+      else r.push('');
+    });
+    clearFiltersForActiveSheet();
+    markDirty();
+    renderGrid();
+  });
+
+  function getColCount(wb){
+    const rows = wb.sheets[wb.activeSheet];
+    return rows.reduce((max, r) => Math.max(max, r.length), 0) || 1;
+  }
+
+  function clearFiltersForActiveSheet(){
+    const wb = activeWB();
+    if (!wb) return;
+    wb.filters[wb.activeSheet] = {};
+  }
+
+  document.getElementById('clearFiltersBtn').addEventListener('click', () => {
+    const wb = activeWB();
+    if (!wb) return;
+    clearFiltersForActiveSheet();
+    renderGrid();
+  });
+
+  function getSheetFilters(wb){
+    if (!wb.filters[wb.activeSheet]) wb.filters[wb.activeSheet] = {};
+    return wb.filters[wb.activeSheet];
+  }
+
+  const DEFAULT_COL_WIDTH = 150;
+  const DEFAULT_ROWNUM_WIDTH = 64;
+  const MIN_ROWNUM_WIDTH = 48;
+  const ROWNUM_KEY = '__rownum__'; // stored alongside sheet widths so it persists with the workbook
+  let rownumColEl = null;
+
+  function getRownumWidth(wb){
+    const w = wb.colWidths && wb.colWidths[ROWNUM_KEY];
+    return typeof w === 'number' && w >= MIN_ROWNUM_WIDTH ? w : DEFAULT_ROWNUM_WIDTH;
+  }
+
+  // Keep the table exactly as wide as its columns so every drag (including the
+  // narrow "#" and numeric columns) is honoured instead of being re-stretched to 100%.
+  function syncTableWidth(){
+    const table = document.getElementById('grid');
+    let total = rownumColEl ? (parseFloat(rownumColEl.style.width) || DEFAULT_ROWNUM_WIDTH) : DEFAULT_ROWNUM_WIDTH;
+    colElements.forEach(c => { total += parseFloat(c.style.width) || DEFAULT_COL_WIDTH; });
+    table.style.width = total + 'px';
+  }
+
+  // Saved widths are the user's preferred widths. When they add up to less than the
+  // panel, the data columns are scaled up (display only) so the grid spans the whole
+  // binder body; wider sheets keep their widths and scroll horizontally.
+  let colScale = 1;
+  function applyColWidths(wb){
+    const wrap = document.querySelector('.grid-wrap');
+    const table = document.getElementById('grid');
+    const widths = getColWidths(wb, colElements.length);
+    const rn = getRownumWidth(wb);
+    const base = colElements.reduce((sum, _, i) => sum + (widths[i] || DEFAULT_COL_WIDTH), 0);
+    const avail = wrap ? wrap.clientWidth : 0;
+    colScale = (base > 0 && avail > rn + base) ? (avail - rn) / base : 1;
+    rownumColEl.style.width = rn + 'px';
+    colElements.forEach((col, i) => {
+      col.style.width = ((widths[i] || DEFAULT_COL_WIDTH) * colScale) + 'px';
+    });
+    table.style.width = (rn + base * colScale) + 'px';
+  }
+  window.addEventListener('resize', () => {
+    const wb = activeWB();
+    if (wb && rownumColEl && colElements.length) applyColWidths(wb);
+  });
+
+  function getColWidths(wb, colCount){
+    if (!wb.colWidths[wb.activeSheet]) wb.colWidths[wb.activeSheet] = [];
+    const arr = wb.colWidths[wb.activeSheet];
+    while (arr.length < colCount) arr.push(DEFAULT_COL_WIDTH);
+    return arr;
+  }
+
+  function getRowHeights(wb){
+    if (!wb.rowHeights[wb.activeSheet]) wb.rowHeights[wb.activeSheet] = {};
+    return wb.rowHeights[wb.activeSheet];
+  }
+
+  function autoFitColumn(wb, colIndex, rows, headers){
+    let maxLen = headers && headers[colIndex] !== undefined ? String(headers[colIndex]).length : 0;
+    const dataStart = wb.headerRow ? 1 : 0;
+    for (let i = dataStart; i < rows.length; i++){
+      const v = rows[i][colIndex];
+      if (v !== undefined) maxLen = Math.max(maxLen, String(v).length);
+    }
+    const px = Math.min(420, Math.max(60, maxLen * 7 + 28));
+    getColWidths(wb, colIndex + 1)[colIndex] = px;
+    renderGrid();
+  }
+
+  function applyCase(colIndex, mode){
+    const wb = activeWB();
+    if (!wb) return;
+    const rows = wb.sheets[wb.activeSheet];
+    const dataStart = wb.headerRow ? 1 : 0;
+    for (let i = dataStart; i < rows.length; i++){
+      const row = rows[i];
+      if (row[colIndex] === undefined) continue;
+      const str = String(row[colIndex]);
+      let out = str;
+      if (mode === 'upper') out = str.toUpperCase();
+      else if (mode === 'lower') out = str.toLowerCase();
+      else if (mode === 'sentence') out = str.length ? str.charAt(0).toUpperCase() + str.slice(1).toLowerCase() : str;
+      else if (mode === 'title') out = str.replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+      row[colIndex] = out;
+    }
+    markDirty();
+    renderGrid();
+  }
+
+  // ---- Dashboard measures (JS equivalents of the DAX measures) ----
+  // When the "Emerge 4Biz Overall DB" workbook (sheet "Emerge 4 Biz 2019-2026") is uploaded or saved,
+  // these measures are calculated here and pushed to Supabase (table dashboard_measures).
+  // The Emerge 4Biz dashboard reads that table and fills its KPI cards automatically.
+  const DASH_ID = 'emerge4biz';
+  const DASH_WORKBOOK_MATCH = 'emerge4biz';          // workbook file name must contain this (spaces/symbols ignored)
+  const DASH_SHEET_PREFIX   = 'emerge4biz20192026';  // sheet "Emerge 4 Biz 2019-2026"
+  const DASH_MEASURES = [
+    { key:'incubated',   type:'countYes', col:'Businesses Incubated'   }, // CALCULATE(COUNTROWS(...), [Businesses Incubated] = "Yes")
+    { key:'accelerated', type:'countYes', col:'Businesses Accelerated' }, // CALCULATE(COUNTROWS(...), [Businesses Accelerated] = "Yes")
+    { key:'financed',    type:'countYes', col:'Supported Financially'  }, // CALCULATE(COUNTROWS(...), [Supported Financially] = "Yes")
+    // Total Women Engaged = Women Incubated + Women Accelerated.
+    // (No row is both incubated and accelerated, so the sum equals "Incubated = Yes OR Accelerated = Yes".)
+    //   Total Women Engaged =
+    //     CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Gender] = "Female", [Businesses Incubated] = "Yes")
+    //     + CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Gender] = "Female", [Businesses Accelerated] = "Yes")
+    { key:'womenEngaged', label:'Women Engaged', type:'countWhere',
+      conds: [ { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] } ],     // all of these must hold
+      anyOf: [ { col:'Businesses Incubated', equals:'Yes' }, { col:'Businesses Accelerated', equals:'Yes' } ] },  // and at least one of these
+    // Total Youth Engaged = Youth (Age Group "11-35") Incubated + Youth (Age Group "11-35") Accelerated.
+    // (No row is both incubated and accelerated, so the sum equals "Incubated = Yes OR Accelerated = Yes".)
+    //   Total Youth Engaged =
+    //     CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Age Group] = "11-35", [Businesses Incubated] = "Yes")
+    //     + CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Age Group] = "11-35", [Businesses Accelerated] = "Yes")
+    { key:'youthEngaged', label:'Youth Engaged', type:'countWhere',
+      conds: [ { col:'Age Group', equals:'11-35' } ],                                                  // must hold
+      anyOf: [ { col:'Businesses Incubated', equals:'Yes' }, { col:'Businesses Accelerated', equals:'Yes' } ] },  // and at least one of these
+    // Total Youth Enterprises Financed = Age Group "11-35" AND Supported Financially = "Yes" (both must be true)
+    //   CALCULATE(COUNTROWS(...), [Age Group] IN {"11-35"}, [Supported Financially] = "Yes")
+    { key:'youthLedFinanced', label:'Youth Enterprises Financed', type:'countWhere', conds:[
+        { col:'Age Group',             equals:'11-35' },
+        { col:'Supported Financially', equals:'Yes'   } ] },
+    // Gender split of Total Youth Reached (feeds the Gender Distribution donut when the Youth tab is selected)
+    { key:'youthMale',   label:'Youth Reached (Male)',   type:'countWhere', conds:[
+        { col:'Age Group', equals:'11-35' },
+        { col:'Gender', alt:['Sex'], equals:['Male','M'] } ] },
+    { key:'youthFemale', label:'Youth Reached (Female)', type:'countWhere', conds:[
+        { col:'Age Group', equals:'11-35' },
+        { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] } ] },
+    // Total Women-Led Enterprises Financed = Gender "Female" AND Supported Financially = "Yes" (both must be true)
+    //   CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Gender] = "Female", [Supported Financially] = "Yes")
+    { key:'womenLedFinanced', label:'Women-Led Enterprises Financed', type:'countWhere', conds:[
+        { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] },
+        { col:'Supported Financially', equals:'Yes' } ] },
+    // Female vs. Male: Reach to Results chart = vulnerable groups (PWDs, IDPs, Refugees), split into Females (Gender = Female) and Males (Gender = Male).
+    //   e.g. Female PWDs = CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Gender] = "Female", [PWD] = "Yes")
+    //        Male PWDs   = CALCULATE(COUNTROWS('Emerge 4 Biz 2019-2026'), [Gender] = "Male",   [PWD] = "Yes")
+    // The IDP / Refugee columns are optional: if the sheet has no such column those measures are simply 0 (they never block the push).
+    { key:'womenPwds',      label:'Female PWDs',      type:'countWhere', conds:[ { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] }, { col:'PWD', equals:'Yes' } ] },
+    { key:'malePwds',      label:'Male PWDs',      type:'countWhere', conds:[ { col:'Gender', alt:['Sex'], equals:['Male','M'] }, { col:'PWD', equals:'Yes' } ] },
+    { key:'womenIdps',      label:'Female IDPs',      type:'countWhere', optional:true, conds:[ { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] }, { col:'IDP', alt:['IDPs','IDP Status','Internally Displaced Person','Internally Displaced People','Internally Displaced'], equals:'Yes' } ] },
+    { key:'maleIdps',      label:'Male IDPs',      type:'countWhere', optional:true, conds:[ { col:'Gender', alt:['Sex'], equals:['Male','M'] }, { col:'IDP', alt:['IDPs','IDP Status','Internally Displaced Person','Internally Displaced People','Internally Displaced'], equals:'Yes' } ] },
+    { key:'womenRefugees',  label:'Female Refugees',  type:'countWhere', optional:true, conds:[ { col:'Gender', alt:['Sex'], equals:['Female','F','Woman','Women'] }, { col:'Refugee', alt:['Refugees','Refugee Status'], equals:'Yes' } ] },
+    { key:'maleRefugees',  label:'Male Refugees',  type:'countWhere', optional:true, conds:[ { col:'Gender', alt:['Sex'], equals:['Male','M'] }, { col:'Refugee', alt:['Refugees','Refugee Status'], equals:'Yes' } ] },
+    { key:'youthReached', type:'countIn', col:'Age Group', values:['11-35'] },    // Total Youth Reached = CALCULATE(COUNTROWS(...), [Age Group] IN {"11-35"})
+    { key:'pwds',        type:'countYes', col:'PWD' },                         // Total PWD Reached = CALCULATE(COUNTROWS(...), [PWD] = "Yes")
+    { key:'adoptedPlans', type:'countYes', col:'Enterprises Adopted Business Plans' }, // CALCULATE(COUNTROWS(...), [Enterprises Adopted Business Plans] = "Yes")
+    { key:'grant',       type:'sum',      col:'Total Amount Disbursed' }  // SUM([ Total Amount Disbursed ])
+  ];
+  const DASH_PARTNERS_ID = 'emerge4biz_partners';
+  const DASH_PARTNERS_SHEET = 'emerge4bizpartners';  // sheet "Emerge4Biz Partners": Partners Engaged = COUNTROWS of this sheet
+  const DASH_YEARS = ['2019','2020','2021','2022','2023','2024','2025','2026'];
+  const DASH_REGIONS = ['Central','Northern','Southern'];
+  const pushStatusEl = document.getElementById('pushStatus');
+
+  const normName = v => String(v == null ? '' : v).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const genderKind = v => { const g = String(v == null ? '' : v).trim().toLowerCase();
+    return (g === 'male' || g === 'm' || g === 'man' || g === 'men') ? 'M' : (g === 'female' || g === 'f' || g === 'woman' || g === 'women') ? 'F' : 'O'; };
+
+  // Finds the filterable columns of any sheet (header row -> column indexes, -1 when absent). Used by the community and partner sheets.
+  function sheetDimCols(rows){
+    const norm = (rows[0] || []).map(normName);
+    const find = tests => { for (const t of tests){ const i = norm.findIndex(t); if (i >= 0) return i; } return -1; };
+    let year = ['year','reportingyear','financialyear','fy'].map(n => norm.indexOf(n)).find(i => i >= 0);
+    if (year === undefined) year = norm.findIndex(h => h.includes('year'));
+    if (year < 0) year = norm.findIndex(h => h.includes('date'));
+    return {
+      y: year,
+      d: find([h => h === 'district', h => h.includes('district'), h => h === 'location']),
+      s: find([h => h.includes('enterprise') && h.includes('sector'), h => h.includes('sector')]),
+      st: find([h => h.includes('projectstatus'), h => h.includes('status')]),
+      p: find([h => h.includes('programcomponent') || h.includes('programmecomponent'), h => h.includes('component')]),
+      g: find([h => h === 'gender', h => h.includes('gender'), h => h === 'sex']),
+      a: find([h => h === 'agegroup', h => h.includes('agegroup')])
+    };
+  }
+  const cellText = v => String(v == null ? '' : v).trim().replace(/\s+/g, ' ');
+  const splitList = v => cellText(v).split(/\s*[,;|\n]+\s*/).filter(Boolean);
+  // Groups the rows of a sheet into small cells (Year x District x Sector x Status x Component x Gender x Age) with a row count n.
+  // opts.kind(row) adds one extra key (e.g. Local / International for partners).
+  function sheetCells(rows, extra){
+    const c = sheetDimCols(rows), map = {};
+    for (let i = 1; i < rows.length; i++){
+      const r = rows[i] || [];
+      if (!r.some(x => cellText(x) !== '')) continue;
+      const ym = c.y >= 0 ? /(20\d{2})/.exec(cellText(r[c.y])) : null;
+      const cell = { y: ym ? ym[1] : '', d: c.d >= 0 ? cellText(r[c.d]) : '',
+                     s: c.s >= 0 ? splitList(r[c.s]).sort() : [], st: c.st >= 0 ? cellText(r[c.st]) : '',
+                     p: c.p >= 0 ? splitList(r[c.p]).sort() : [], g: c.g >= 0 ? genderKind(r[c.g]) : 'O',
+                     a: c.a >= 0 ? cellText(r[c.a]) : '' };
+      if (extra) Object.assign(cell, extra(r));
+      const key = JSON.stringify(cell);
+      (map[key] || (map[key] = Object.assign(cell, { n: 0 }))).n++;
+    }
+    return { cells: Object.values(map), has: { y: c.y >= 0, d: c.d >= 0, s: c.s >= 0, st: c.st >= 0, p: c.p >= 0, g: c.g >= 0, a: c.a >= 0 } };
+  }
+
+  function parseAmount(v){
+    let t = String(v == null ? '' : v).trim();
+    if (!t) return null;                       // blank -> ignored, like DAX SUM
+    let neg = false;
+    if (/^\(.*\)$/.test(t)){ neg = true; t = t.slice(1, -1); }
+    t = t.replace(/[^0-9.\-]/g, '');
+    if (!t || t === '-' || t === '.') return null;
+    const n = parseFloat(t);
+    return isNaN(n) ? null : (neg ? -n : n);
+  }
+
+  const DISTRICT_REGION = {};
+  Object.entries({
+    Central:['Dedza','Dowa','Kasungu','Lilongwe','Mchinji','Nkhotakota','Ntcheu','Ntchisi','Salima'],
+    Northern:['Chitipa','Karonga','Likoma','Mzimba','Nkhata Bay','Rumphi'],
+    Southern:['Balaka','Blantyre','Chikwawa','Chiradzulu','Machinga','Mangochi','Mulanje','Mwanza','Neno','Nsanje','Phalombe','Thyolo','Zomba']
+  }).forEach(([reg, list]) => list.forEach(d => DISTRICT_REGION[normName(d)] = reg));
+
+  function regionOf(value){
+    const n = normName(value).replace(/region$/, '').replace(/district$/, '');
+    return DASH_REGIONS.find(r => normName(r) === n) || DISTRICT_REGION[n] || 'Unassigned';
+  }
+
+  // Is this the workbook/sheet that feeds the dashboard? Returns the sheet name or null.
+  function dashboardSheetOf(wb){
+    if (!wb || !normName(wb.fileName + ' ' + wb.label).includes(DASH_WORKBOOK_MATCH)) return null;
+    return wb.sheetOrder.find(n => normName(n).startsWith(DASH_SHEET_PREFIX)) || null;
+  }
+
+  // Pure calculation: sheet rows (first row = headers) -> measure totals per combination of
+  // Year x Region x Sector(s) x Project Status x District x Program Component. The dashboard filters and adds up these cells.
+  function computeDashboardMeasures(rows){
+    const headers = (rows[0] || []).map(h => String(h == null ? '' : h).trim().toLowerCase());
+    const idx = name => headers.indexOf(name.toLowerCase());
+    const norm = headers.map(normName);
+    const findCol = tests => { for (const t of tests){ const i = norm.findIndex(t); if (i >= 0) return i; } return -1; };
+    const colIdx = (name, alt) => [name].concat(alt || []).map(idx).find(i => i >= 0) ?? -1;   // header lookup, optional alternative names
+    const needs = m => m.optional ? [] : (m.conds ? m.conds.concat(m.anyOf || []).map(c => ({ col:c.col, alt:c.alt })) : [{ col:m.col }]);   // optional measures never block the push when their column is absent
+    const missing = [];
+    DASH_MEASURES.forEach(m => needs(m).forEach(n => { if (colIdx(n.col, n.alt) < 0 && !missing.includes(n.col)) missing.push(n.col); }));
+
+    let yearCol = ['year','reportingyear','financialyear','fy'].map(n => norm.indexOf(n)).find(i => i >= 0);
+    if (yearCol === undefined) yearCol = norm.findIndex(h => h.includes('year'));
+    if (yearCol < 0) yearCol = norm.findIndex(h => h.includes('date'));
+
+    const districtCol = findCol([h => h === 'district', h => h.includes('district'), h => h === 'location']);
+    let regionCol = norm.indexOf('region');
+    if (regionCol < 0) regionCol = districtCol;               // no Region column -> derive region from district
+    const sectorCol = findCol([h => h.includes('enterprise') && h.includes('sector'), h => h.includes('sector')]);
+    const statusCol = findCol([h => h.includes('projectstatus'), h => h.includes('status')]);
+    const componentCol = findCol([h => h.includes('programcomponent') || h.includes('programmecomponent'), h => h.includes('component')]);
+    const genderCol = findCol([h => h === 'gender', h => h.includes('gender'), h => h === 'sex']);
+    const ageCol = findCol([h => h === 'agegroup', h => h.includes('agegroup')]);
+    const projectCol = findCol([h => h === 'project' || h === 'projectname' || h === 'projecttitle' || h === 'projectimplemented' || h === 'projectsimplemented' || h === 'projects',
+                                h => h.includes('project') && !/status|component|stage|partner|donor|funder|manager|lead|officer|code|id$|date|budget|cost/.test(h)]);
+
+    const colName = c => c >= 0 ? rows[0][c] : null;
+    const res = { diag:{}, cells:[], options:{ sectors:[], statuses:[], districts:[], components:[] }, totals:{}, rows:0, undated:0, outOfRange:0, missing,
+                  yearCol: colName(yearCol), regionCol: colName(regionCol),
+                  cols:{ sector: colName(sectorCol), status: colName(statusCol), district: colName(districtCol), component: colName(componentCol),
+                           gender: colName(genderCol), age: colName(ageCol), project: colName(projectCol) } };
+    DASH_MEASURES.forEach(m => res.totals[m.key] = 0);
+    if (missing.length || yearCol < 0) return res;
+
+    // distinct values, case/space-insensitive, first spelling wins
+    const seen = { sectors:{}, statuses:{}, districts:{}, components:{}, projects:{} };
+    const canon = (bucket, raw) => {
+      const name = String(raw == null ? '' : raw).trim().replace(/\s+/g, ' ');
+      if (!name) return '';
+      const k = name.toLowerCase();
+      if (!seen[bucket][k]) seen[bucket][k] = name;
+      return seen[bucket][k];
+    };
+
+    const cellMap = {};
+    for (let i = 1; i < rows.length; i++){
+      const r = rows[i] || [];
+      if (!r.some(c => String(c == null ? '' : c).trim() !== '')) continue;
+      res.rows++;
+      const ym = /(20\d{2})/.exec(String(r[yearCol] == null ? '' : r[yearCol]));
+      if (!ym){ res.undated++; continue; }
+      const y = ym[1];
+      if (!DASH_YEARS.includes(y)){ res.outOfRange++; continue; }
+
+      const reg = regionCol >= 0 ? regionOf(r[regionCol]) : 'Unassigned';
+      const dist = districtCol >= 0 ? canon('districts', r[districtCol]) : '';
+      const stat = statusCol >= 0 ? canon('statuses', r[statusCol]) : '';
+      const secs = [];
+      if (sectorCol >= 0){
+        String(r[sectorCol] == null ? '' : r[sectorCol]).split(/[,;|\n]+/).forEach(part => {
+          const sn = canon('sectors', part);
+          if (sn && !secs.includes(sn)) secs.push(sn);
+        });
+        secs.sort();
+      }
+      const comps = [];                                      // a cell may list several program components
+      if (componentCol >= 0){
+        String(r[componentCol] == null ? '' : r[componentCol]).split(/[,;|\n]+/).forEach(part => {
+          const cn = canon('components', part);
+          if (cn && !comps.includes(cn)) comps.push(cn);
+        });
+        comps.sort();
+      }
+
+      const g = genderCol >= 0 ? genderKind(r[genderCol]) : 'O';              // M / F / O (other or blank)
+      const age = ageCol >= 0 ? String(r[ageCol] == null ? '' : r[ageCol]).trim().replace(/\s+/g, ' ') : '';
+      const proj = projectCol >= 0 ? canon('projects', r[projectCol]) : '';
+      const key = [y, reg, secs.join('|'), stat, dist, comps.join('|'), g, age, proj].join('\u0001');
+      const cell = cellMap[key] || (cellMap[key] = { y, r: reg, s: secs, st: stat, d: dist, p: comps, g, a: age, pr: proj, n: 0 });
+      cell.n++;                                              // participants (data rows) in this cell
+      DASH_MEASURES.forEach(m => {
+        let add = 0;
+        if (m.type === 'countWhere'){                       // every condition must be true
+          const group = m.conds.concat(m.anyOf || []);
+          const d = res.diag[m.key] || (res.diag[m.key] = { all:0, conds: group.map(c => ({ col:c.col, matched:0, values:{} })) });
+          const hits = group.map((c, k) => {
+            const raw = r[colIdx(c.col, c.alt)];
+            const v = String(raw == null ? '' : raw).trim();
+            const hit = [].concat(c.equals).some(x => x.toLowerCase() === v.toLowerCase());
+            const dc = d.conds[k];
+            if (hit) dc.matched++;
+            if (dc.values[v] !== undefined || Object.keys(dc.values).length < 60) dc.values[v] = (dc.values[v] || 0) + 1;
+            return hit;
+          });
+          const nAll = m.conds.length;
+          const allOk = hits.slice(0, nAll).every(Boolean);
+          const anyOk = !(m.anyOf && m.anyOf.length) || hits.slice(nAll).some(Boolean);
+          add = (allOk && anyOk) ? 1 : 0;
+          d.all += add;
+        } else {
+          const v = r[colIdx(m.col)];
+          if (m.type === 'countYes') add = String(v == null ? '' : v).trim().toLowerCase() === 'yes' ? 1 : 0;
+          else if (m.type === 'countIn') add = m.values.some(x => x.toLowerCase() === String(v == null ? '' : v).trim().toLowerCase()) ? 1 : 0;
+          else { const n = parseAmount(v); add = n === null ? 0 : n; }
+        }
+        cell[m.key] = (cell[m.key] || 0) + add;
+        res.totals[m.key] += add;
+      });
+    }
+    res.cells = Object.values(cellMap).map(c => {
+      DASH_MEASURES.forEach(m => {
+        const v = Math.round((c[m.key] || 0) * 100) / 100;
+        if (v) c[m.key] = v; else delete c[m.key];           // zero measures are omitted (the dashboard reads a missing value as 0)
+      });
+      return c;
+    });
+    const sortedVals = o => Object.values(o).sort((a, b) => a.localeCompare(b));
+    res.options = { sectors: sortedVals(seen.sectors), statuses: sortedVals(seen.statuses),
+                    districts: sortedVals(seen.districts), components: sortedVals(seen.components), projects: sortedVals(seen.projects) };
+    DASH_MEASURES.forEach(m => { res.totals[m.key] = Math.round(res.totals[m.key] * 100) / 100; });
+    return res;
+  }
+
+  function setPushStatus(text, isErr){
+    pushStatusEl.textContent = text;
+    pushStatusEl.classList.toggle('dirty', !!isErr);
+  }
+
+  // Total Women Reached: a lump sum (not affected by the dashboard filters) = rows with Gender = "Female" in the same three sheets:
+  //   Total Women Reached =
+  //     COUNTROWS ( FILTER ( ALL ( 'Emerge 4 Biz 2019-2026' ), 'Emerge 4 Biz 2019-2026'[Gender] = "Female" ) )
+  //     + COUNTROWS ( FILTER ( ALL ( 'Information Sessions' ), 'Information Sessions'[Gender] = "Female" ) )
+  //     + COUNTROWS ( FILTER ( ALL ( 'Mentors & Coaches' ), 'Mentors & Coaches'[Gender] = "Female" ) )
+  // Total Community Members Reached: a lump sum (not affected by the dashboard filters) =
+  //   COUNTROWS('Emerge 4 Biz 2019-2026') + COUNTROWS('Mentors & Coaches') + COUNTROWS('Information Sessions')
+  const DASH_COMMUNITY_SOURCES = [
+    { label:'Emerge 4 Biz 2019-2026', match:'emerge4biz20192026' },
+    { label:'Mentors & Coaches',      match:'mentorscoaches' },
+    { label:'Information Sessions',   match:'informationsessions' }
+  ];
+  // Counts the non-blank data rows of a sheet and splits them by the Gender column (Male / Female / anything else).
+  function countRowsByGender(rows){
+    const headers = (rows[0] || []).map(h => normName(h));
+    let gc = headers.indexOf('gender');
+    if (gc < 0) gc = headers.findIndex(h => h.includes('gender'));
+    if (gc < 0) gc = headers.indexOf('sex');
+    let ac = headers.indexOf('agegroup');
+    if (ac < 0) ac = headers.findIndex(h => h.includes('agegroup'));
+    const NOAGE = 'Age not recorded';                  // sheets without an Age Group column (e.g. Mentors & Coaches)
+    const out = { total:0, male:0, female:0, other:0, genderCol: gc >= 0 ? rows[0][gc] : null, ages:{} };
+    for (let i = 1; i < rows.length; i++){             // row 0 = headers
+      const r = rows[i] || [];
+      if (!r.some(c => String(c == null ? '' : c).trim() !== '')) continue;
+      out.total++;
+      const g = gc >= 0 ? String(r[gc] == null ? '' : r[gc]).trim().toLowerCase() : '';
+      const kind = (g === 'male' || g === 'm') ? 'male' : (g === 'female' || g === 'f') ? 'female' : 'other';   // other = blank, "Prefer not to say", etc.
+      out[kind]++;
+      const age = (ac >= 0 ? String(r[ac] == null ? '' : r[ac]).trim().replace(/\s+/g, ' ') : '') || NOAGE;
+      const a = out.ages[age] || (out.ages[age] = { male:0, female:0, other:0 });
+      a[kind]++;
+    }
+    return out;
+  }
+  function computeCommunityLumpSum(wb){
+    const parts = {}, womenParts = {}, missing = [], gender = { male:0, female:0, other:0 }, ages = {};
+    let total = 0, womenReached = 0;   // womenReached = Gender 'Female' rows summed over the three sheets (lump sum, unfiltered)
+    DASH_COMMUNITY_SOURCES.forEach(src => {
+      const name = wb.sheetOrder.find(n => normName(n).startsWith(src.match));
+      if (!name){ missing.push(src.label); parts[src.label] = 0; return; }
+      const c = countRowsByGender(wb.sheets[name] || []);
+      parts[src.label] = c.total;
+      womenParts[src.label] = c.female;
+      womenReached += c.female;
+      total += c.total;
+      gender.male += c.male; gender.female += c.female; gender.other += c.other;
+      Object.entries(c.ages).forEach(([label, v]) => {
+        const a = ages[label] || (ages[label] = { male:0, female:0, other:0 });
+        a.male += v.male; a.female += v.female; a.other += v.other;
+      });
+    });
+    // filterable version of the same counts: one entry per sheet, so the dashboard can apply Year / District / Sector / Status / Component
+    const cells = [], has = {};
+    DASH_COMMUNITY_SOURCES.forEach(src => {
+      const name = wb.sheetOrder.find(n => normName(n).startsWith(src.match));
+      if (!name) return;
+      const sc = sheetCells(wb.sheets[name] || [], () => ({ src: src.label }));
+      sc.cells.forEach(c => cells.push(c));
+      has[src.label] = sc.has;
+    });
+    const ageGender = Object.entries(ages)
+      .map(([label, v]) => ({ label, male:v.male, female:v.female, other:v.other }))
+      .sort((a, b) => (a.label === 'Age not recorded') - (b.label === 'Age not recorded') ||
+                      (parseInt(a.label, 10) || 0) - (parseInt(b.label, 10) || 0));
+    return { total, parts, womenReached, womenParts, missing, gender, ageGender, cells, has };
+  }
+
+  // Sheet "Emerge4Biz Partners" (in any workbook) feeds the Partners Engaged card
+  function partnersSheetOf(wb){
+    if (!wb) return null;
+    return wb.sheetOrder.find(n => normName(n).includes(DASH_PARTNERS_SHEET)) || null;
+  }
+
+  // Partners Engaged = COUNTROWS('Emerge4Biz Partners'): every non-blank data row is one partner.
+  // If the sheet has a Year (or Date) column the count is also split by year so the dashboard's year filter works.
+  function computePartners(rows){
+    const headers = (rows[0] || []).map(h => normName(h));
+    let yearCol = ['year','reportingyear','financialyear','fy'].map(n => headers.indexOf(n)).find(i => i >= 0);
+    if (yearCol === undefined) yearCol = headers.findIndex(h => h.includes('year'));
+    if (yearCol < 0) yearCol = headers.findIndex(h => h.includes('date'));
+    const ctxCol = headers.findIndex(h => h.includes('context'));        // "Partners Context": Local / International
+    const kindOf = r => { const v = ctxCol >= 0 ? String(r[ctxCol] == null ? '' : r[ctxCol]).trim().toLowerCase() : '';
+      return { k: v.startsWith('local') ? 'L' : v.startsWith('int') ? 'I' : 'O' }; };
+    const pc = sheetCells(rows, kindOf);                                  // filterable cells: Year x District x Status x Component x Local/International
+    const res = { rows:0, local:0, international:0, other:0, contextCol: ctxCol >= 0 ? rows[0][ctxCol] : null,
+                  byYear:{}, undated:0, yearCol: yearCol >= 0 ? rows[0][yearCol] : null, cells: pc.cells, has: pc.has };
+    for (let i = 1; i < rows.length; i++){
+      const r = rows[i] || [];
+      if (!r.some(c => String(c == null ? '' : c).trim() !== '')) continue;
+      res.rows++;
+      if (ctxCol >= 0){
+        const v = String(r[ctxCol] == null ? '' : r[ctxCol]).trim().toLowerCase();
+        if (v.startsWith('local')) res.local++;
+        else if (v.startsWith('int')) res.international++;
+        else res.other++;
+      }
+      if (yearCol < 0) continue;
+      const ym = /(20\d{2})/.exec(String(r[yearCol] == null ? '' : r[yearCol]));
+      if (!ym){ res.undated++; continue; }
+      res.byYear[ym[1]] = (res.byYear[ym[1]] || 0) + 1;
+    }
+    return res;
+  }
+
+  // Each push returns a short message, or null when the workbook does not apply.
+  async function pushMainMeasures(wb){
+    const sheetName = dashboardSheetOf(wb);
+    if (!sheetName) return null;
+    const r = computeDashboardMeasures(wb.sheets[sheetName] || []);
+    if (r.missing.length) return { ok:false, msg:'column(s) not found: ' + r.missing.join(', ') };
+    if (!r.yearCol) return { ok:false, msg:'no Year (or Date) column found in "' + sheetName + '"' };
+    const lump = computeCommunityLumpSum(wb);
+    const { error } = await supabaseClient.from('dashboard_measures').upsert({
+      id: DASH_ID,
+      source_file: wb.fileName || wb.label,
+      row_count: r.rows,
+      payload: { cells: r.cells, options: r.options, totals: r.totals, rows: r.rows, undated: r.undated, outOfRange: r.outOfRange,
+                 yearCol: r.yearCol, regionCol: r.regionCol, cols: r.cols,
+                 lump: { communityGeneral: lump.total, parts: lump.parts, womenReached: lump.womenReached, womenParts: lump.womenParts, gender: lump.gender, ageGender: lump.ageGender, cells: lump.cells, has: lump.has } },
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    // Explain any multi-condition measure that came out as 0
+    const warns = [];
+    if (lump.missing.length) warns.push('Community Members Reached is missing sheet(s): ' + lump.missing.join(', '));
+    DASH_MEASURES.filter(m => m.type === 'countWhere' && !m.optional && r.rows > 0 && !r.totals[m.key]).forEach(m => {
+      const d = r.diag[m.key];
+      if (!d) return;
+      const parts = d.conds.map(c => {
+        const top = Object.entries(c.values).sort((a, b) => b[1] - a[1]).slice(0, 5)
+          .map(([v, n]) => '"' + (v || '(blank)') + '" x' + n).join(', ');
+        return c.col + ': ' + c.matched + ' of ' + r.rows + ' rows match (values found: ' + top + ')';
+      });
+      warns.push((m.label || m.key) + ' is 0 -> ' + parts.join(' | '));
+    });
+    if (warns.length) console.warn('Dashboard measure check:\n' + warns.join('\n'));
+    return { ok:true, msg:'measures', warn: warns.join('  ||  ') };
+  }
+
+  async function pushPartners(wb){
+    const sheetName = partnersSheetOf(wb);
+    if (!sheetName) return null;
+    const r = computePartners(wb.sheets[sheetName] || []);
+    const { error } = await supabaseClient.from('dashboard_measures').upsert({
+      id: DASH_PARTNERS_ID,
+      source_file: (wb.fileName || wb.label) + ' › ' + sheetName,
+      row_count: r.rows,
+      payload: { rows: r.rows, local: r.local, international: r.international, other: r.other, contextCol: r.contextCol,
+                 byYear: r.byYear, undated: r.undated, yearCol: r.yearCol, sheet: sheetName, cells: r.cells, has: r.has },
+      updated_at: new Date().toISOString()
+    });
+    if (error) throw error;
+    return { ok:true, msg:'partners (' + r.rows + (r.contextCol ? ': ' + r.local + ' local, ' + r.international + ' international' : '') + ')' };
+  }
+
+  // Calculate and push to Supabase. Safe to call for any workbook: does nothing unless it holds a dashboard sheet.
+  async function pushDashboardMeasures(wb){
+    const done = [], failed = [], warned = [];
+    for (const fn of [pushMainMeasures, pushPartners]){
+      try{
+        const r = await fn(wb);
+        if (!r) continue;
+        (r.ok ? done : failed).push(r.msg);
+        if (r.warn) warned.push(r.warn);
+      }catch(err){
+        console.error('Dashboard push failed:', err);
+        failed.push('could not reach Supabase — see console');
+      }
+    }
+    pushStatusEl.title = warned.join('\n');
+    if (failed.length) setPushStatus('Dashboard not fully updated — ' + failed.join('; '), true);
+    else if (warned.length) setPushStatus('Dashboard updated, but ' + warned.join('  ||  '), true);
+    else if (done.length) setPushStatus('Dashboard updated ' + new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) + ' (' + done.join(', ') + ')');
+  }
+
+  // ---- Grid rendering ----
+  let gridRenderToken = 0;
+  function renderGrid(){
+    gridRenderToken++;   // cancels any in-progress batched render from a previous call
+    const wb = activeWB();
+    closeAllMenus();
+    if (!wb){ gridHead.innerHTML = ''; gridBody.innerHTML = ''; rowCountEl.textContent = '0'; colCountEl.textContent = '0'; sheetLabelEl.textContent = '—'; document.getElementById('clearFiltersBtn').disabled = true; updateSaveStatus(); return; }
+
+    const rows = wb.sheets[wb.activeSheet] || [[]];
+    const colCount = getColCount(wb);
+    const dataStart = wb.headerRow ? 1 : 0;
+    const headers = wb.headerRow && rows[0] ? rows[0] : null;
+    const searchTerm = searchInput.value.trim().toLowerCase();
+    const filters = getSheetFilters(wb);
+    const sortState = wb.sortState;
+
+    let viewIdx = [];
+    for (let i = dataStart; i < rows.length; i++){
+      const row = rows[i] || [];
+      if (searchTerm){
+        const hit = row.some(c => String(c).toLowerCase().includes(searchTerm));
+        if (!hit) continue;
+      }
+      let passesFilters = true;
+      for (const colKey in filters){
+        const allowed = filters[colKey];
+        if (!allowed) continue;
+        const val = row[colKey] !== undefined ? String(row[colKey]) : '';
+        if (!allowed.has(val)){ passesFilters = false; break; }
+      }
+      if (!passesFilters) continue;
+      viewIdx.push(i);
+    }
+
+    if (sortState.col !== null && sortState.dir !== 0){
+      const c = sortState.col;
+      viewIdx.sort((a, b) => {
+        const va = rows[a][c] ?? '';
+        const vb = rows[b][c] ?? '';
+        const na = parseFloat(va), nb = parseFloat(vb);
+        let cmp;
+        if (!isNaN(na) && !isNaN(nb) && va !== '' && vb !== '') cmp = na - nb;
+        else cmp = String(va).localeCompare(String(vb));
+        return sortState.dir === 1 ? cmp : -cmp;
+      });
+    }
+
+    // Column widths — a persisted colgroup keeps widths stable across
+    // filtering/sorting/search instead of re-flowing to fit whatever rows show.
+    const table = document.getElementById('grid');
+    const oldColgroup = table.querySelector('colgroup');
+    if (oldColgroup) oldColgroup.remove();
+    const widths = getColWidths(wb, colCount);
+    const colgroup = document.createElement('colgroup');
+    const rownumCol = document.createElement('col');
+    rownumCol.style.width = getRownumWidth(wb) + 'px';
+    rownumColEl = rownumCol;
+    colgroup.appendChild(rownumCol);
+    colElements = [];
+    for (let c = 0; c < colCount; c++){
+      const col = document.createElement('col');
+      colgroup.appendChild(col);
+      colElements.push(col);
+    }
+    table.insertBefore(colgroup, table.firstChild);
+    applyColWidths(wb);
+
+    // Header row
+    gridHead.innerHTML = '';
+    const trh = document.createElement('tr');
+    const thNum = document.createElement('th');
+    thNum.textContent = '#';
+    const numHandle = document.createElement('span');
+    numHandle.className = 'col-resize-handle';
+    numHandle.title = 'Drag to resize column, double-click to reset';
+    thNum.appendChild(numHandle);
+    attachRownumResize(numHandle, wb);
+    trh.appendChild(thNum);
+    for (let c = 0; c < colCount; c++){
+      const th = buildHeaderCell(wb, c, headers, colCount, rows);
+      trh.appendChild(th);
+    }
+    gridHead.appendChild(trh);
+
+    // Body rows
+    gridBody.innerHTML = '';
+    if (viewIdx.length === 0){
+      const tr = document.createElement('tr');
+      const td = document.createElement('td');
+      td.colSpan = colCount + 1;
+      td.className = 'empty-cell-msg';
+      td.textContent = (searchTerm || Object.keys(filters).length) ? 'No rows match the current search/filter.' : 'No data rows yet — try “+ Row at end”.';
+      tr.appendChild(td);
+      gridBody.appendChild(tr);
+    } else {
+      const rowHeights = getRowHeights(wb);
+      const myToken = ++gridRenderToken;
+      const buildRow = (origIdx, displayPos) => {
+        const row = rows[origIdx];
+        const tr = document.createElement('tr');
+        if (rowHeights[origIdx]) tr.style.height = rowHeights[origIdx] + 'px';
+        const tdNum = document.createElement('td');
+        tdNum.className = 'rownum';
+        tdNum.innerHTML =
+          '<span class="idx"></span>' +
+          '<span class="row-ctrls">' +
+            '<span class="ins-above" title="Insert row above">▲+</span>' +
+            '<span class="ins-below" title="Insert row below">▼+</span>' +
+            '<span class="del-row" title="Delete row">✕</span>' +
+          '</span>' +
+          '<span class="row-resize-handle" title="Drag to resize row"></span>';
+        tdNum.querySelector('.idx').textContent = displayPos + 1;
+        tdNum.querySelector('.ins-above').addEventListener('click', () => {
+          rows.splice(origIdx, 0, new Array(colCount).fill(''));
+          markDirty();
+          renderGrid();
+        });
+        tdNum.querySelector('.ins-below').addEventListener('click', () => {
+          rows.splice(origIdx + 1, 0, new Array(colCount).fill(''));
+          markDirty();
+          renderGrid();
+        });
+        tdNum.querySelector('.del-row').addEventListener('click', () => {
+          rows.splice(origIdx, 1);
+          markDirty();
+          renderGrid();
+        });
+        attachRowResize(tdNum.querySelector('.row-resize-handle'), tr, wb, origIdx);
+        tr.appendChild(tdNum);
+        for (let c = 0; c < colCount; c++){
+          const td = document.createElement('td');
+          td.contentEditable = 'true';
+          td.textContent = row[c] !== undefined ? row[c] : '';
+          td.dataset.row = origIdx;
+          td.dataset.col = c;
+          td.addEventListener('input', onCellEdit);
+          tr.appendChild(td);
+        }
+        return tr;
+      };
+      // First batch immediately so the sheet appears at once; the rest is appended in
+      // small batches so the page never locks up on big sheets.
+      const FIRST = 150, BATCH = 250;
+      const appendRange = (from, to) => {
+        const frag = document.createDocumentFragment();
+        for (let k = from; k < to; k++) frag.appendChild(buildRow(viewIdx[k], k));
+        gridBody.appendChild(frag);
+      };
+      appendRange(0, Math.min(FIRST, viewIdx.length));
+      const pump = (from) => {
+        if (myToken !== gridRenderToken || from >= viewIdx.length) return;
+        requestAnimationFrame(() => {
+          if (myToken !== gridRenderToken) return;
+          const to = Math.min(from + BATCH, viewIdx.length);
+          appendRange(from, to);
+          pump(to);
+        });
+      };
+      pump(FIRST);
+    }
+
+    rowCountEl.textContent = rows.length - dataStart;
+    colCountEl.textContent = colCount;
+    sheetLabelEl.textContent = wb.label + ' › ' + wb.activeSheet;
+    document.getElementById('clearFiltersBtn').disabled = Object.keys(filters).length === 0;
+    updateSaveStatus();
+  }
+
+  function buildHeaderCell(wb, c, headers, colCount, rows){
+    const th = document.createElement('th');
+    const label = headers && headers[c] !== undefined && headers[c] !== '' ? headers[c] : columnLetter(c);
+    const sortState = wb.sortState;
+    const filters = getSheetFilters(wb);
+
+    let arrow = '';
+    if (sortState.col === c && sortState.dir === 1) arrow = '▲';
+    if (sortState.col === c && sortState.dir === -1) arrow = '▼';
+
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'th-label';
+    labelSpan.textContent = label;
+    th.appendChild(labelSpan);
+
+    if (arrow){
+      const a = document.createElement('span');
+      a.className = 'arrow';
+      a.textContent = arrow;
+      th.appendChild(a);
+    }
+
+    const controls = document.createElement('span');
+    controls.className = 'th-controls';
+
+    // Combined sort + filter dropdown (Excel-style autofilter)
+    const sortFilterBox = document.createElement('span');
+    sortFilterBox.className = 'menubox' + (filters[c] ? ' filtered' : '');
+    const sfTrigger = document.createElement('span');
+    sfTrigger.className = 'menu-trigger';
+    sfTrigger.textContent = '▾';
+    sfTrigger.title = 'Sort & filter';
+    // Built on first open (not up-front): eagerly building a checkbox list of every
+    // unique value for every column made each sheet switch freeze on large sheets.
+    const sfMenu = document.createElement('div');
+    sfMenu.className = 'dropdown-menu filter-menu';
+    sfMenu.addEventListener('click', e => e.stopPropagation());
+    let sfBuilt = false;
+    sortFilterBox.appendChild(sfTrigger);
+    sortFilterBox.appendChild(sfMenu);
+    sfTrigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = !sfMenu.classList.contains('open');
+      closeAllMenus();
+      if (willOpen){
+        if (!sfBuilt){
+          const built = buildSortFilterMenu(wb, c, rows);
+          while (built.firstChild) sfMenu.appendChild(built.firstChild);
+          sfBuilt = true;
+        }
+        sfMenu.classList.add('open');
+      }
+    });
+    controls.appendChild(sortFilterBox);
+
+    // Case conversion menu
+    const caseBox = document.createElement('span');
+    caseBox.className = 'menubox';
+    const caseBtn = document.createElement('span');
+    caseBtn.textContent = 'Aa▾';
+    caseBtn.title = 'Change case';
+    const caseMenu = document.createElement('div');
+    caseMenu.className = 'dropdown-menu';
+    caseMenu.innerHTML =
+      '<button class="item" data-mode="upper">UPPERCASE</button>' +
+      '<button class="item" data-mode="lower">lowercase</button>' +
+      '<button class="item" data-mode="sentence">Sentence case</button>' +
+      '<button class="item" data-mode="title">Capitalize Each Word</button>';
+    caseBox.appendChild(caseBtn);
+    caseBox.appendChild(caseMenu);
+    caseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const willOpen = !caseMenu.classList.contains('open');
+      closeAllMenus();
+      if (willOpen) caseMenu.classList.add('open');
+    });
+    caseMenu.querySelectorAll('button').forEach(b => {
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyCase(c, b.dataset.mode);
+      });
+    });
+    controls.appendChild(caseBox);
+
+    // Delete column
+    const delCol = document.createElement('span');
+    delCol.textContent = '✕';
+    delCol.title = 'Delete column';
+    delCol.addEventListener('click', async (e) => {
+      e.stopPropagation();
+      const ok = await askConfirm('Delete this column?');
+      if (!ok) return;
+      rows.forEach(r => { if (r.length > c) r.splice(c, 1); });
+      clearFiltersForActiveSheet();
+      markDirty();
+      renderGrid();
+    });
+    controls.appendChild(delCol);
+
+    th.appendChild(controls);
+
+    labelSpan.title = wb.headerRow ? 'Click to sort, double-click to rename' : 'Click to sort';
+    labelSpan.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (labelSpan.isContentEditable) return;
+      cycleSort(wb, c);
+    });
+
+    if (wb.headerRow){
+      labelSpan.addEventListener('dblclick', (e) => {
+        e.stopPropagation();
+        labelSpan.contentEditable = 'true';
+        labelSpan.spellcheck = false;
+        labelSpan.focus();
+        const range = document.createRange();
+        range.selectNodeContents(labelSpan);
+        const sel = window.getSelection();
+        sel.removeAllRanges();
+        sel.addRange(range);
+      });
+
+      const commitLabelEdit = () => {
+        if (!labelSpan.isContentEditable) return;
+        labelSpan.contentEditable = 'false';
+        const newVal = labelSpan.textContent.trim();
+        const headerRowArr = rows[0];
+        while (headerRowArr.length <= c) headerRowArr.push('');
+        const finalVal = newVal !== '' ? newVal : columnLetter(c);
+        if (headerRowArr[c] !== finalVal){
+          headerRowArr[c] = finalVal;
+          markDirty();
+        }
+        renderGrid();
+      };
+      labelSpan.addEventListener('blur', commitLabelEdit);
+      labelSpan.addEventListener('keydown', (e) => {
+        if (!labelSpan.isContentEditable) return;
+        e.stopPropagation();
+        if (e.key === 'Enter'){ e.preventDefault(); labelSpan.blur(); }
+        else if (e.key === 'Escape'){ e.preventDefault(); labelSpan.textContent = label; labelSpan.blur(); }
+      });
+      labelSpan.addEventListener('mousedown', (e) => {
+        if (labelSpan.isContentEditable) e.stopPropagation();
+      });
+    }
+
+    // Drag handle to resize this column; double-click to auto-fit to content.
+    const resizeHandle = document.createElement('span');
+    resizeHandle.className = 'col-resize-handle';
+    resizeHandle.title = 'Drag to resize column, double-click to auto-fit';
+    th.appendChild(resizeHandle);
+    attachColResize(resizeHandle, wb, c, rows, headers);
+
+    return th;
+  }
+
+  // ---- Column / row resizing ----
+  function attachColResize(handle, wb, colIndex, rows, headers){
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const col = colElements[colIndex];
+      const startX = e.clientX;
+      const startWidth = col ? parseFloat(col.style.width) || DEFAULT_COL_WIDTH : DEFAULT_COL_WIDTH;
+      handle.classList.add('dragging');
+
+      function onMove(ev){
+        const newWidth = Math.max(50, startWidth + (ev.clientX - startX));
+        if (col) col.style.width = newWidth + 'px';
+        syncTableWidth();
+      }
+      function onUp(ev){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+        const newWidth = Math.max(50, startWidth + (ev.clientX - startX));
+        getColWidths(wb, colIndex + 1)[colIndex] = newWidth / colScale;
+        applyColWidths(wb);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+
+    handle.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      autoFitColumn(wb, colIndex, rows, headers);
+    });
+  }
+
+  function attachRownumResize(handle, wb){
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startX = e.clientX;
+      const startWidth = rownumColEl ? parseFloat(rownumColEl.style.width) || DEFAULT_ROWNUM_WIDTH : DEFAULT_ROWNUM_WIDTH;
+      handle.classList.add('dragging');
+      const calc = (ev) => Math.max(MIN_ROWNUM_WIDTH, startWidth + (ev.clientX - startX));
+      function onMove(ev){
+        if (rownumColEl) rownumColEl.style.width = calc(ev) + 'px';
+        syncTableWidth();
+      }
+      function onUp(ev){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+        wb.colWidths[ROWNUM_KEY] = calc(ev);
+        applyColWidths(wb);
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    handle.addEventListener('dblclick', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      wb.colWidths[ROWNUM_KEY] = DEFAULT_ROWNUM_WIDTH;
+      renderGrid();
+    });
+  }
+
+  function attachRowResize(handle, tr, wb, origIdx){
+    handle.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const startY = e.clientY;
+      const startHeight = tr.getBoundingClientRect().height;
+      handle.classList.add('dragging');
+
+      function onMove(ev){
+        const newHeight = Math.max(22, startHeight + (ev.clientY - startY));
+        tr.style.height = newHeight + 'px';
+      }
+      function onUp(ev){
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('mouseup', onUp);
+        handle.classList.remove('dragging');
+        const newHeight = Math.max(22, startHeight + (ev.clientY - startY));
+        getRowHeights(wb)[origIdx] = newHeight;
+      }
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+  }
+
+  function cycleSort(wb, c){
+    const s = wb.sortState;
+    if (s.col !== c) wb.sortState = { col: c, dir: 1 };
+    else if (s.dir === 1) wb.sortState.dir = -1;
+    else if (s.dir === -1) wb.sortState = { col: null, dir: 0 };
+    else wb.sortState = { col: c, dir: 1 };
+    renderGrid();
+  }
+
+  function buildSortFilterMenu(wb, c, rows){
+    const menu = document.createElement('div');
+    menu.className = 'dropdown-menu filter-menu';
+    menu.addEventListener('click', e => e.stopPropagation());
+
+    const sortAsc = document.createElement('button');
+    sortAsc.className = 'item';
+    sortAsc.textContent = 'Sort A → Z';
+    sortAsc.style.padding = '6px 4px';
+    sortAsc.addEventListener('click', () => { wb.sortState = { col: c, dir: 1 }; renderGrid(); });
+
+    const sortDesc = document.createElement('button');
+    sortDesc.className = 'item';
+    sortDesc.textContent = 'Sort Z → A';
+    sortDesc.style.padding = '6px 4px';
+    sortDesc.addEventListener('click', () => { wb.sortState = { col: c, dir: -1 }; renderGrid(); });
+
+    const hr = document.createElement('hr');
+
+    const dataStart = wb.headerRow ? 1 : 0;
+    const uniqueValues = [];
+    const seen = new Set();
+    for (let i = dataStart; i < rows.length; i++){
+      const val = rows[i][c] !== undefined ? String(rows[i][c]) : '';
+      if (!seen.has(val)){ seen.add(val); uniqueValues.push(val); }
+    }
+    uniqueValues.sort((a, b) => a.localeCompare(b));
+
+    const filters = getSheetFilters(wb);
+    const currentAllowed = filters[c]; // Set or undefined (undefined = all allowed)
+    const state = {};
+    uniqueValues.forEach(v => { state[v] = currentAllowed ? currentAllowed.has(v) : true; });
+
+    const search = document.createElement('input');
+    search.type = 'text';
+    search.placeholder = 'Search values…';
+
+    const list = document.createElement('div');
+    list.className = 'filter-list';
+
+    function renderList(filterText){
+      list.innerHTML = '';
+      const ft = (filterText || '').toLowerCase();
+
+      const allLabel = document.createElement('label');
+      const allBox = document.createElement('input');
+      allBox.type = 'checkbox';
+      const allChecked = uniqueValues.every(v => state[v]);
+      allBox.checked = allChecked;
+      allBox.addEventListener('change', () => {
+        uniqueValues.forEach(v => { if (v.toLowerCase().includes(ft)) state[v] = allBox.checked; });
+        renderList(search.value);
+      });
+      allLabel.appendChild(allBox);
+      allLabel.appendChild(document.createTextNode('(Select All)'));
+      list.appendChild(allLabel);
+
+      uniqueValues.forEach(v => {
+        if (ft && !v.toLowerCase().includes(ft)) return;
+        const label = document.createElement('label');
+        const box = document.createElement('input');
+        box.type = 'checkbox';
+        box.checked = !!state[v];
+        box.addEventListener('change', () => { state[v] = box.checked; });
+        label.appendChild(box);
+        label.appendChild(document.createTextNode(v === '' ? '(blank)' : v));
+        list.appendChild(label);
+      });
+    }
+    renderList('');
+    search.addEventListener('input', () => renderList(search.value));
+
+    const actions = document.createElement('div');
+    actions.className = 'filter-actions';
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'clear-btn';
+    clearBtn.textContent = 'Clear filter';
+    clearBtn.addEventListener('click', () => {
+      delete filters[c];
+      closeAllMenus();
+      renderGrid();
+    });
+    const applyBtn = document.createElement('button');
+    applyBtn.className = 'apply-btn';
+    applyBtn.textContent = 'Apply';
+    applyBtn.addEventListener('click', () => {
+      const allSelected = uniqueValues.every(v => state[v]);
+      if (allSelected){
+        delete filters[c];
+      } else {
+        filters[c] = new Set(uniqueValues.filter(v => state[v]));
+      }
+      closeAllMenus();
+      renderGrid();
+    });
+    actions.appendChild(clearBtn);
+    actions.appendChild(applyBtn);
+
+    menu.appendChild(sortAsc);
+    menu.appendChild(sortDesc);
+    menu.appendChild(hr);
+    menu.appendChild(search);
+    menu.appendChild(list);
+    menu.appendChild(actions);
+    return menu;
+  }
+
+  function closeAllMenus(){
+    document.querySelectorAll('.dropdown-menu.open').forEach(m => m.classList.remove('open'));
+  }
+  document.addEventListener('click', closeAllMenus);
+
+  function onCellEdit(e){
+    const wb = activeWB();
+    if (!wb) return;
+    const td = e.target;
+    const r = parseInt(td.dataset.row, 10);
+    const c = parseInt(td.dataset.col, 10);
+    const val = td.textContent;
+    const rows = wb.sheets[wb.activeSheet];
+    while (rows[r].length <= c) rows[r].push('');
+    if (rows[r][c] !== val){
+      rows[r][c] = val;
+      td.classList.add('edited');
+      markDirty();
+    }
+  }
+
+  function columnLetter(i){
+    let s = '';
+    i += 1;
+    while (i > 0){
+      const rem = (i - 1) % 26;
+      s = String.fromCharCode(65 + rem) + s;
+      i = Math.floor((i - 1) / 26);
+    }
+    return s;
+  }
+
+  // ---- Init ----
+  refreshResumeSection();
+})();
+
+// Logout — backed by the real Supabase auth session
+(async function(){
+  const logoutOverlay = document.getElementById('logoutOverlay');
+  let loggingOut = false;   // stops the SIGNED_OUT listener from redirecting before the user chooses
+
+  const logoutLink = document.getElementById('logoutLink');
+  if (logoutLink){
+    logoutLink.addEventListener('click', async function(e){
+      e.preventDefault();
+      loggingOut = true;
+      try{ await supabaseClient.auth.signOut(); }catch(err){ /* still show the choice */ }
+      logoutOverlay.classList.add('open');
+      document.getElementById('goLoginBtn').focus();
+    });
+  }
+  document.getElementById('goLoginBtn').addEventListener('click', () => { window.location.href = 'login.html'; });
+  document.getElementById('goDashboardBtn').addEventListener('click', () => { window.location.href = 'index.html'; });
+
+  // If the session expires or is revoked elsewhere, bounce back to login.
+  supabaseClient.auth.onAuthStateChange((event) => {
+    if (event === 'SIGNED_OUT' && !loggingOut){
+      window.location.href = 'login.html';
+    }
+  });
+})();
+</script>
+</body>
+</html>
